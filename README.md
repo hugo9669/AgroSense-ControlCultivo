@@ -95,7 +95,7 @@ cd C:\Users\Usuario\Desktop\AgroIoT
 
 El script:
 1. Empaqueta el último commit (`git archive`). Nunca incluye `.env`, `.pem` ni `secrets.h`.
-2. Lo sube con tu llave `C:\Users\Usuario\Downloads\llaves_servidor_final.pem` a `~/agroiot` de `ubuntu@100.31.47.204`.
+2. Lo sube con tu llave `C:\Users\Usuario\Downloads\llaves_servidor_final.pem` a `~/agroiot` de `ubuntu@3.95.254.224`.
 3. Ejecuta [`scripts/setup_ec2.sh`](scripts/setup_ec2.sh), que:
    - instala Docker si falta y aplica `vm.max_map_count` (lo exige CrateDB),
    - **detiene el despliegue viejo de `~/proyecto`** (sus volúmenes **no** se borran),
@@ -109,8 +109,8 @@ El script:
 ```powershell
 # desde tu PC (PowerShell), en la carpeta del repo
 git archive --format=tar.gz -o agroiot.tar.gz HEAD
-scp -i C:\Users\Usuario\Downloads\llaves_servidor_final.pem agroiot.tar.gz ubuntu@100.31.47.204:~/
-ssh -i C:\Users\Usuario\Downloads\llaves_servidor_final.pem ubuntu@100.31.47.204
+scp -i C:\Users\Usuario\Downloads\llaves_servidor_final.pem agroiot.tar.gz ubuntu@3.95.254.224:~/
+ssh -i C:\Users\Usuario\Downloads\llaves_servidor_final.pem ubuntu@3.95.254.224
 ```
 ```bash
 # ya dentro de la EC2
@@ -137,7 +137,7 @@ sudo bash scripts/setup_ec2.sh
    | Constante | Valor |
    |---|---|
    | `WIFI_SSID` / `WIFI_PASSWORD` | Tu red WiFi de 2.4 GHz |
-   | `SERVER_HOST` | `100.31.47.204` (o la IP actual) |
+   | `SERVER_HOST` | `3.95.254.224` (o la IP actual) |
    | `SERVER_PORT` | `80` |
    | `IOTA_APIKEY` | La que imprimió `setup_ec2.sh` (o `grep IOTA_APIKEY ~/agroiot/.env`) |
    | `DEVICE_ID` | `planta01` |
@@ -158,11 +158,11 @@ En la EC2 (`cd ~/agroiot`):
 | Estado de contenedores | `sudo docker compose ps` |
 | Simular el sensor sin el ESP32 | `bash scripts/probar_sensor.sh` · con suelo seco: `bash scripts/probar_sensor.sh 27 55 12000 12` |
 | Entidad en Orion | `curl -s localhost:1036/v2/entities -H 'fiware-service: openiot' -H 'fiware-servicepath: /'` |
-| Dato crudo en Crate | `http://100.31.47.204:4200` → usuario `iot` → `SELECT * FROM mtopeniot.etplantsensor ORDER BY time_index DESC LIMIT 20;` |
+| Dato crudo en Crate | `http://3.95.254.224:4200` → usuario `iot` → `SELECT * FROM mtopeniot.etplantsensor ORDER BY time_index DESC LIMIT 20;` |
 | ETL | `sudo docker logs -f etl` → `ETL ok: N lecturas, M alertas nuevas` |
-| Panel | `http://100.31.47.204` (usuario `admin`, clave `FRONT_PASSWORD` del `.env`) |
-| Grafana | `http://100.31.47.204:3000` → carpeta **AgroIoT** → *AgroIoT - Sensores* |
-| API (Swagger) | `http://100.31.47.204/api/docs` |
+| Panel | `http://3.95.254.224` (usuario `admin`, clave `FRONT_PASSWORD` del `.env`) |
+| Grafana | `http://3.95.254.224:3000` → carpeta **AgroIoT** → *AgroIoT - Sensores* |
+| API (Swagger) | `http://3.95.254.224/api/docs` |
 
 ## Operación diaria
 
