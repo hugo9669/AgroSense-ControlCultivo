@@ -201,6 +201,9 @@ void loop() {
     Serial.printf("Temp / Hum Aire : %.2f C | %.2f %%\n", tempAire, humAire);
     Serial.printf("Luz Ambiental   : %.2f lux\n", lux);
     Serial.printf("Humedad Suelo   : %d %% (RAW: %d)\n", humedadSueloPorcentaje, humedadSueloRaw);
+    // Diagnostico: el pin que cambia al mojar el sensor es donde esta el cable AO
+    Serial.printf("  diag ADC      : VP/GPIO36=%d  VN/GPIO39=%d  (el codigo usa GPIO%d)\n",
+                  analogRead(36), analogRead(39), PIN_HUMEDAD_ANALOG);
     Serial.printf("Alerta seco     : %s\n", estaSeco ? "SI" : "NO");
 
     enviarDatosServidor(tempAire, humAire, lux, humedadSueloPorcentaje, humedadSueloRaw, estaSeco);
