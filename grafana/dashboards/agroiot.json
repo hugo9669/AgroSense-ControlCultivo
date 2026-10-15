@@ -1,0 +1,103 @@
+{
+  "uid": "agroiot-sensores",
+  "title": "AgroIoT - Sensores (tecnico)",
+  "tags": ["agroiot", "iot"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "planta",
+        "label": "Planta",
+        "type": "query",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+        "query": "SELECT DISTINCT entity_id FROM lectura_limpia ORDER BY 1",
+        "refresh": 2,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Temperatura actual",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+      "fieldConfig": { "defaults": { "unit": "celsius", "decimals": 1,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "blue", "value": null }, { "color": "green", "value": 10 }, { "color": "red", "value": 35 } ] } } },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT temperature FROM lectura_limpia WHERE entity_id = '$planta' ORDER BY ts DESC LIMIT 1" } ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Humedad aire actual",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 0,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "orange", "value": null }, { "color": "green", "value": 30 }, { "color": "blue", "value": 90 } ] } } },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT humidity FROM lectura_limpia WHERE entity_id = '$planta' ORDER BY ts DESC LIMIT 1" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Luz actual",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+      "fieldConfig": { "defaults": { "unit": "lux", "decimals": 0,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "green", "value": 1000 } ] } } },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT luminosity FROM lectura_limpia WHERE entity_id = '$planta' ORDER BY ts DESC LIMIT 1" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Humedad suelo actual",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 0,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "green", "value": 20 }, { "color": "blue", "value": 80 } ] } } },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT soil_moisture FROM lectura_limpia WHERE entity_id = '$planta' ORDER BY ts DESC LIMIT 1" } ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Temperatura (°C) - DWH limpio",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+      "fieldConfig": { "defaults": { "unit": "celsius" } },
+      "targets": [ { "refId": "A", "format": "time_series", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT ts AS time, temperature AS \"temperatura\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) ORDER BY ts" } ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Humedad aire y suelo (%) - DWH limpio",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } },
+      "targets": [ { "refId": "A", "format": "time_series", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT ts AS time, humidity AS \"aire\", soil_moisture AS \"suelo\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) ORDER BY ts" } ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Luminosidad (lux) - DWH limpio",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+      "fieldConfig": { "defaults": { "unit": "lux" } },
+      "targets": [ { "refId": "A", "format": "time_series", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT ts AS time, luminosity AS \"luz\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) ORDER BY ts" } ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Dato CRUDO en CrateDB (antes del ETL)",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "crate" },
+      "targets": [ { "refId": "A", "format": "time_series", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT time_index AS time, temperature, humidity, soilmoisture FROM mtopeniot.etplantsensor WHERE entity_id = '$planta' AND time_index >= $__timeFrom() AND time_index <= $__timeTo() ORDER BY time_index LIMIT 5000" } ]
+    },
+    {
+      "id": 9, "type": "table", "title": "Últimas alertas",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 9 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "dwh" },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT ts AS \"fecha\", severidad, tipo, mensaje FROM alerta WHERE entity_id = '$planta' ORDER BY ts DESC LIMIT 100" } ]
+    }
+  ]
+}

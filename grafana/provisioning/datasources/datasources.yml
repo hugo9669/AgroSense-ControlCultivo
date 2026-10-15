@@ -1,0 +1,28 @@
+# Fuentes de datos creadas automaticamente al arrancar Grafana (las claves vienen del .env)
+apiVersion: 1
+datasources:
+  - name: DWH Postgres
+    uid: dwh
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: dwh:5432
+    user: ${DWH_USER}
+    isDefault: true
+    jsonData:
+      database: ${DWH_DB}
+      sslmode: disable
+      postgresVersion: 1600
+    secureJsonData:
+      password: ${DWH_PASSWORD}
+
+  - name: CrateDB (crudo)
+    uid: crate
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: crate-db:5432
+    user: iot
+    jsonData:
+      database: doc
+      sslmode: disable
+    secureJsonData:
+      password: ${CRATE_PASSWORD}

@@ -1,0 +1,181 @@
+# AgroIoT - Monitoreo de cultivos sobre FIWARE (una sola EC2, Docker Compose)
+#
+#  ESP32 --HTTP--> nginx :80 /iot/json --> IoT Agent --NGSI v2--> Orion (+Mongo)
+#                                                                   | suscripcion
+#                                                                   v
+#           Front (:80) <-- API FastAPI + Gemini <-- Postgres DWH <-- ETL <-- CrateDB <-- QuantumLeap
+#                                                    Grafana (:3000) lee Postgres y Crate
+#
+# Requisito del host (lo aplica scripts/setup_ec2.sh):  sysctl -w vm.max_map_count=262144
+# Puertos publicos usados (Security Group): 22, 80, 1036, 4200, 3000  (7896 opcional)
+
+name: agroiot
+
+x-logging: &logging            # limita los logs: el disco es de solo 24 GB
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  # ---------------- Ingesta ----------------
+  iot-agent:
+    image: fiware/iotagent-json:3.4.0     # version fija: 'latest' entraba en bucle de reinicio
+    container_name: iot-agent
+    restart: unless-stopped
+    depends_on: [orion, mongo-db]
+    logging: *logging
+    ports:
+      - "127.0.0.1:4041:4041"   # API de administracion: solo desde la propia EC2 (provisionar.sh)
+      - "7896:7896"             # southbound HTTP. El ESP32 entra por nginx :80; este puerto solo
+                                # sirve si lo abres en el Security Group (opcional)
+    environment:
+      - IOTA_CB_HOST=orion
+      - IOTA_CB_PORT=1026
+      - IOTA_NORTH_PORT=4041
+      - IOTA_REGISTRY_TYPE=mongodb
+      - IOTA_CB_NGSI_VERSION=v2
+      - IOTA_AUTOCAST=true
+      - IOTA_LOG_LEVEL=INFO
+      - IOTA_MONGO_HOST=mongo-db
+      - IOTA_MONGO_PORT=27017
+      - IOTA_MONGO_DB=iotagentjson
+      - IOTA_HTTP_PORT=7896
+      - IOTA_PROVIDER_URL=http://iot-agent:4041
+
+  # ---------------- Contexto ----------------
+  orion:
+    image: fiware/orion:4.5.0       # NGSI v2 (QuantumLeap lo requiere)
+    container_name: orion
+    restart: unless-stopped
+    depends_on: [mongo-db]
+    logging: *logging
+    ports:
+      - "1036:1026"                 # 1036 abierto en el Security Group -> 1026 interno
+    command: -dbURI mongodb://mongo-db -logLevel INFO
+
+  mongo-db:
+    image: mongo:4.4
+    container_name: db-mongo
+    restart: unless-stopped
+    logging: *logging
+    expose: ["27017"]               # solo red interna
+    volumes: [mongo-db:/data/db]
+
+  # ---------------- Historico crudo (RAW) ----------------
+  quantumleap:
+    image: orchestracities/quantumleap:1.0.0
+    container_name: fiware-quantumleap
+    restart: unless-stopped
+    depends_on: [crate-db]
+    logging: *logging
+    expose: ["8668"]
+    environment:
+      - CRATE_HOST=crate-db
+      - CRATE_DB_USER=iot
+      - CRATE_DB_PASS=${CRATE_PASSWORD:?define CRATE_PASSWORD en .env}
+      - LOGLEVEL=INFO
+
+  crate-db:
+    image: crate:5.8
+    container_name: db-crate
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "4200:4200"                 # Admin UI (usuario iot / CRATE_PASSWORD)
+    expose: ["4300", "5432"]        # el 5432 de Crate NO se publica (chocaria con el DWH)
+    # El superusuario 'crate' solo entra sin clave desde dentro del contenedor (lo usa scripts/crate_auth.sh
+    # para crear el usuario 'iot'); todo lo demas usa iot + CRATE_PASSWORD.
+    command: >
+      crate -Cauth.host_based.enabled=true
+      -Cauth.host_based.config.0.user=crate -Cauth.host_based.config.0.address=_local_ -Cauth.host_based.config.0.method=trust
+      -Cauth.host_based.config.99.method=password
+      -Ccluster.name=agrocluster -Chttp.cors.enabled=true -Chttp.cors.allow-origin="*"
+    environment:
+      - CRATE_HEAP_SIZE=2g          # t3.large = 8 GB de RAM compartidos
+    volumes: [crate-db:/data]
+
+  # ---------------- ETL + DWH ----------------
+  dwh:
+    image: postgres:16
+    container_name: dwh-postgres
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "127.0.0.1:5432:5432"       # solo loopback: DataGrip/DBeaver entran por tunel SSH
+    environment:
+      - POSTGRES_USER=${DWH_USER:-dwh}
+      - POSTGRES_PASSWORD=${DWH_PASSWORD:?define DWH_PASSWORD en .env}
+      - POSTGRES_DB=${DWH_DB:-plantas}
+    volumes:
+      - dwh-data:/var/lib/postgresql/data
+      - ./app/dwh/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  etl:
+    build: ./app/etl
+    container_name: etl
+    restart: unless-stopped
+    depends_on: [crate-db, dwh, orion]
+    logging: *logging
+    environment:
+      - CRATE_URL=http://crate-db:4200/_sql
+      - CRATE_USER=iot
+      - CRATE_PASSWORD=${CRATE_PASSWORD}
+      - CRATE_TABLE=mtopeniot.etplantsensor
+      - DWH_DSN=postgresql://${DWH_USER:-dwh}:${DWH_PASSWORD}@dwh:5432/${DWH_DB:-plantas}
+      - ORION_URL=http://orion:1026
+      - ETL_INTERVAL_SECONDS=300
+      - SIN_DATOS_MINUTOS=15
+    volumes:
+      - ./app/dwh/init.sql:/schema/init.sql:ro   # el ETL aplica el esquema (idempotente) al arrancar
+
+  # ---------------- Logica de negocio + IA ----------------
+  api:
+    build: ./app/api_ai
+    container_name: api
+    restart: unless-stopped
+    depends_on: [dwh]
+    logging: *logging
+    expose: ["8000"]                # solo la consume nginx (frontend)
+    environment:
+      - DWH_DSN=postgresql://${DWH_USER:-dwh}:${DWH_PASSWORD}@dwh:5432/${DWH_DB:-plantas}
+      - FRONT_USER=${FRONT_USER:-admin}
+      - FRONT_PASSWORD=${FRONT_PASSWORD:?define FRONT_PASSWORD en .env}
+      - AUTH_SECRET=${AUTH_SECRET:?define AUTH_SECRET en .env}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
+
+  # ---------------- Presentacion ----------------
+  frontend:
+    build: ./app/frontend
+    container_name: frontend
+    restart: unless-stopped
+    depends_on: [api, iot-agent]
+    logging: *logging
+    ports:
+      - "80:80"                     # panel web + /api (API) + /iot/json (entrada del ESP32)
+
+  grafana:                           # opcional (admin / tecnico)
+    image: grafana/grafana:11.3.0
+    container_name: grafana
+    restart: unless-stopped
+    depends_on: [crate-db, dwh]
+    logging: *logging
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?define GRAFANA_ADMIN_PASSWORD en .env}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - DWH_USER=${DWH_USER:-dwh}
+      - DWH_PASSWORD=${DWH_PASSWORD}
+      - DWH_DB=${DWH_DB:-plantas}
+      - CRATE_PASSWORD=${CRATE_PASSWORD}
+    volumes:
+      - grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+volumes:
+  mongo-db:
+  crate-db:
+  dwh-data:
+  grafana:

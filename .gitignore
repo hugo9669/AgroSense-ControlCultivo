@@ -1,0 +1,11 @@
+# Secretos: NUNCA se suben
+.env
+*.pem
+firmware/IoT_Orion/include/secrets.h
+
+# Build / dependencias
+__pycache__/
+node_modules/
+dist/
+.pio/
+deploy/*.tar.gz
