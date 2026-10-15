@@ -154,6 +154,7 @@ En la EC2 (`cd ~/agroiot`):
 
 | Prueba | Comando / URL |
 |---|---|
+| **Verificación completa** (contenedores, Orion, Crate, DWH, API, IA, Grafana) | `bash scripts/verificar.sh` |
 | Estado de contenedores | `sudo docker compose ps` |
 | Simular el sensor sin el ESP32 | `bash scripts/probar_sensor.sh` · con suelo seco: `bash scripts/probar_sensor.sh 27 55 12000 12` |
 | Entidad en Orion | `curl -s localhost:1036/v2/entities -H 'fiware-service: openiot' -H 'fiware-servicepath: /'` |
