@@ -212,6 +212,7 @@ def ciclo(conn):
 def main():
     conn = None
     while True:
+        error = False
         try:
             if conn is None or conn.closed:
                 conn = psycopg.connect(DSN, autocommit=True, options=f"-c timezone={ZONA}")
@@ -219,11 +220,12 @@ def main():
                 print("ETL conectado al DWH", flush=True)
             ciclo(conn)
         except Exception as e:  # el ciclo nunca debe morir
+            error = True
             print("ETL error:", repr(e), flush=True)
             if conn is not None and not conn.closed and conn.broken:
                 conn.close()
-        # Sin conexion al DWH (p. ej. Postgres aun arrancando): reintento rapido
-        time.sleep(INTERVAL if conn is not None and not conn.closed else 10)
+        # Tras un error (p. ej. CrateDB o Postgres aun arrancando al reiniciar la EC2): reintento rapido
+        time.sleep(15 if error else INTERVAL)
 
 
 if __name__ == "__main__":
