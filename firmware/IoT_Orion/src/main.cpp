@@ -39,12 +39,19 @@
 // Valor centinela: el ETL lo detecta como fuera de rango y genera una alerta de "falla del sensor"
 #define LECTURA_INVALIDA -999.0f
 
+#define AP3216_ADDR  0x1E
+
 AP3216_WE ap3216 = AP3216_WE(&Wire);
 ClosedCube_HDC1080 hdc1080;
 char urlServidor[192];
 
+bool i2cResponde(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return Wire.endTransmission() == 0;
+}
+
 bool hdc1080Presente() {
-  return hdc1080.readManufacturerId() == HDC1080_MANUFACTURER_ID;
+  return i2cResponde(HDC1080_ADDR) && hdc1080.readManufacturerId() == HDC1080_MANUFACTURER_ID;
 }
 
 float leerTemperatura() {
@@ -57,6 +64,30 @@ float leerHumedadAire() {
   if (!hdc1080Presente()) return LECTURA_INVALIDA;
   float h = hdc1080.readHumidity();
   return isnan(h) ? LECTURA_INVALIDA : h;
+}
+
+// Si el AP3216 no responde, la libreria devuelve un numero basura: mejor enviar -999
+float leerLux() {
+  if (!i2cResponde(AP3216_ADDR)) return LECTURA_INVALIDA;
+  return ap3216.getAmbientLight();
+}
+
+// Diagnostico: lista los dispositivos del bus I2C
+void escanearI2C() {
+  Serial.printf("Escaneando I2C (SDA=%d, SCL=%d)...\n", SDA_PIN, SCL_PIN);
+  int n = 0;
+  for (uint8_t a = 1; a < 127; a++) {
+    if (!i2cResponde(a)) continue;
+    n++;
+    const char *nombre = a == HDC1080_ADDR ? "HDC1080 (temp/hum)" :
+                         a == AP3216_ADDR  ? "AP3216 (luz)" :
+                         a == 0x34         ? "AXP192/AXP2101 (energia del T-Beam)" :
+                         a == 0x3C         ? "pantalla OLED" : "desconocido";
+    Serial.printf("  0x%02X  %s\n", a, nombre);
+  }
+  if (n == 0) Serial.println("  [ERROR] Ningun dispositivo: revisa VCC=3.3V, GND comun, SDA->21 y SCL->22 (no invertidos)");
+  if (!i2cResponde(HDC1080_ADDR)) Serial.println("  [AVISO] HDC1080 (0x40) no responde -> temp/hum = -999");
+  if (!i2cResponde(AP3216_ADDR))  Serial.println("  [AVISO] AP3216 (0x1E) no responde -> luz = -999");
 }
 
 void conectarWiFi() {
@@ -76,7 +107,20 @@ void conectarWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("\n[OK] Conectado. IP local: %s\n", WiFi.localIP().toString().c_str());
   } else {
-    Serial.println("\n[ERROR] No se pudo conectar a Wi-Fi (se reintenta en el proximo ciclo).");
+    wl_status_t st = WiFi.status();
+    Serial.printf("\n[ERROR] No se pudo conectar a Wi-Fi \"%s\" (%s). Se reintenta en el proximo ciclo.\n", WIFI_SSID,
+                  st == WL_NO_SSID_AVAIL ? "no encuentra esa red: revisa el nombre exacto y que sea 2.4 GHz" :
+                  st == WL_CONNECT_FAILED ? "clave incorrecta o la red rechazo la conexion" : "sin respuesta del router");
+    static bool listado = false;
+    if (!listado) {   // solo la primera vez: redes que ve la placa
+      listado = true;
+      int n = WiFi.scanNetworks();
+      Serial.printf("Redes visibles (%d):\n", n);
+      for (int i = 0; i < n && i < 15; i++)
+        Serial.printf("  \"%s\"  %d dBm %s\n", WiFi.SSID(i).c_str(), WiFi.RSSI(i),
+                      WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "(abierta)" : "(con clave)");
+      WiFi.scanDelete();
+    }
   }
 }
 
@@ -114,15 +158,24 @@ void setup() {
   Serial.printf("Servidor: %s\n", urlServidor);
 
   pinMode(PIN_HUMEDAD_ANALOG, INPUT);
+  analogSetPinAttenuation(PIN_HUMEDAD_ANALOG, ADC_11db);   // rango completo 0-3.3 V
 
   Wire.begin(SDA_PIN, SCL_PIN, 100000);
+  escanearI2C();
   hdc1080.begin(HDC1080_ADDR);
-  if (!hdc1080Presente()) Serial.println("[AVISO] HDC1080 no detectado: se enviaran lecturas invalidas (-999)");
-
-  ap3216.init();
-  ap3216.setMode(AP3216_ALS_PS);
+  if (i2cResponde(AP3216_ADDR)) {
+    ap3216.init();
+    ap3216.setMode(AP3216_ALS_PS);
+  }
 
   conectarWiFi();
+}
+
+// Promedio de 10 lecturas: el ADC del ESP32 es ruidoso
+int leerSueloRaw() {
+  long suma = 0;
+  for (int i = 0; i < 10; i++) { suma += analogRead(PIN_HUMEDAD_ANALOG); delay(5); }
+  return suma / 10;
 }
 
 void loop() {
@@ -137,9 +190,9 @@ void loop() {
 
     float tempAire = leerTemperatura();
     float humAire  = leerHumedadAire();
-    float lux      = ap3216.getAmbientLight();
+    float lux      = leerLux();
 
-    int humedadSueloRaw = analogRead(PIN_HUMEDAD_ANALOG);
+    int humedadSueloRaw = leerSueloRaw();
     int humedadSueloPorcentaje = map(humedadSueloRaw, HUMEDAD_RAW_SECO, HUMEDAD_RAW_MOJADO, 0, 100);
     humedadSueloPorcentaje = constrain(humedadSueloPorcentaje, 0, 100);
     bool estaSeco = (humedadSueloPorcentaje < UMBRAL_SECO_PCT);
