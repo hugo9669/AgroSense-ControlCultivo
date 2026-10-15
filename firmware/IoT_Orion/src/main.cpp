@@ -160,8 +160,22 @@ void setup() {
   pinMode(PIN_HUMEDAD_ANALOG, INPUT);
   analogSetPinAttenuation(PIN_HUMEDAD_ANALOG, ADC_11db);   // rango completo 0-3.3 V
 
+  // Bus I2C bloqueado (SDA o SCL pegados a GND por un cable mal puesto)? Se detecta al instante:
+  // si no, el escaneo esperaria un timeout por cada direccion y la placa pareceria "muerta" varios minutos.
+  pinMode(SDA_PIN, INPUT_PULLUP);
+  pinMode(SCL_PIN, INPUT_PULLUP);
+  delay(5);
+  bool sdaOk = digitalRead(SDA_PIN) == HIGH, sclOk = digitalRead(SCL_PIN) == HIGH;
+
   Wire.begin(SDA_PIN, SCL_PIN, 100000);
-  escanearI2C();
+  Wire.setTimeOut(25);   // ms: si un sensor no responde, no bloquear la placa
+  if (sdaOk && sclOk) {
+    escanearI2C();
+  } else {
+    Serial.printf("[ERROR] Bus I2C BLOQUEADO (SDA=%s, SCL=%s): un cable de los sensores esta mal puesto.\n"
+                  "        Revisa VCC/GND/SDA/SCL del HDC1080 y del AP3216 (prueba desconectandolos uno a uno).\n",
+                  sdaOk ? "ok" : "pegado a GND", sclOk ? "ok" : "pegado a GND");
+  }
   hdc1080.begin(HDC1080_ADDR);
   if (i2cResponde(AP3216_ADDR)) {
     ap3216.init();
@@ -171,7 +185,7 @@ void setup() {
   conectarWiFi();
 }
 
-// Promedio de 10 lecturas: el ADC del ESP32 es ruidoso
+// Promedio de 10 lecturas: el ADC del ESP32 es ruidoso  
 int leerSueloRaw() {
   long suma = 0;
   for (int i = 0; i < 10; i++) { suma += analogRead(PIN_HUMEDAD_ANALOG); delay(5); }
