@@ -222,7 +222,8 @@ def main():
             print("ETL error:", repr(e), flush=True)
             if conn is not None and not conn.closed and conn.broken:
                 conn.close()
-        time.sleep(INTERVAL)
+        # Sin conexion al DWH (p. ej. Postgres aun arrancando): reintento rapido
+        time.sleep(INTERVAL if conn is not None and not conn.closed else 10)
 
 
 if __name__ == "__main__":

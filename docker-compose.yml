@@ -108,12 +108,20 @@ services:
     volumes:
       - dwh-data:/var/lib/postgresql/data
       - ./app/dwh/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 
   etl:
     build: ./app/etl
     container_name: etl
     restart: unless-stopped
-    depends_on: [crate-db, dwh, orion]
+    depends_on:
+      crate-db: { condition: service_started }
+      orion: { condition: service_started }
+      dwh: { condition: service_healthy }
     logging: *logging
     environment:
       - CRATE_URL=http://crate-db:4200/_sql

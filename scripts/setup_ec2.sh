@@ -16,7 +16,7 @@ systemctl enable --now docker
 usermod -aG docker "$USUARIO" 2>/dev/null || true   # para usar docker sin sudo (tras volver a entrar por SSH)
 
 paso "2/7 Parametro del kernel que exige CrateDB"
-grep -q '^vm.max_map_count' /etc/sysctl.conf || echo 'vm.max_map_count=262144' >> /etc/sysctl.conf
+echo 'vm.max_map_count=262144' > /etc/sysctl.d/99-crate.conf   # persistente tras reinicios
 sysctl -w vm.max_map_count=262144
 
 paso "3/7 Detener el despliegue anterior (~/proyecto) si existe (sus volumenes NO se borran)"
