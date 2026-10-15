@@ -33,7 +33,10 @@ for intento in 1 2 3 4 5; do
     c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "http://$HOST:4041/iot/devices/$DEVICE" "${H[@]}")
     [ "$c" = "404" ] && break
   done
-  curl -s -o /dev/null -X DELETE "http://$HOST:4041/iot/services?resource=/iot/json&apikey=$APIKEY" "${H[@]}"
+  # Borra todos los grupos de /iot/json (incluidos los de apikeys antiguas) antes de recrear el actual
+  for k in $(curl -s "http://$HOST:4041/iot/services" "${H[@]}" | grep -o '"apikey":"[^"]*"' | cut -d'"' -f4); do
+    curl -s -o /dev/null -X DELETE "http://$HOST:4041/iot/services?resource=/iot/json&apikey=$k" "${H[@]}"
+  done
 
   post "grupo de servicio (apikey)" "http://$HOST:4041/iot/services" '{
     "services": [{"apikey": "'"$APIKEY"'", "cbroker": "http://orion:1026",
