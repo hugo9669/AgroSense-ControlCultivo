@@ -13,7 +13,7 @@
 // --- Servidor (EC2) ---
 // IP publica de la instancia. OJO: no es IP elastica; si detienes/inicias la EC2 cambia
 // y hay que actualizarla aqui y volver a flashear.
-#define SERVER_HOST    "3.95.254.224"         // <-- CAMBIAR si cambia la IP
+#define SERVER_HOST    "54.145.196.10"         // <-- CAMBIAR si cambia la IP
 // 80 = entra por nginx (/iot/json), no requiere abrir puertos extra.
 // 7896 = directo al agente IoT (solo si abriste ese puerto en el Security Group).
 #define SERVER_PORT    80

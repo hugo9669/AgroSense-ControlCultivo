@@ -9,7 +9,7 @@
       .\deploy\desplegar.ps1 -Ip 1.2.3.4          # si la IP publica cambio tras detener/iniciar la instancia
 #>
 param(
-  [string]$Ip   = "3.95.254.224",                                   # <-- IP publica actual de tu EC2
+  [string]$Ip   = "54.145.196.10",                                   # <-- IP publica actual de tu EC2
   [string]$Key  = "C:\Users\Usuario\Downloads\llaves_servidor_final.pem",  # <-- tu llave .pem
   [string]$User = "ubuntu",
   [string]$Dir  = "agroiot"
