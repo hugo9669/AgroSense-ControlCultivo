@@ -1,0 +1,2235 @@
+{
+  "uid": "agroiot-estado",
+  "title": "AgroIoT - Estado de la planta (estadísticas)",
+  "description": "Estadísticas del estado de la planta calculadas sobre el DWH (lecturas limpias por el ETL).",
+  "tags": [
+    "agroiot",
+    "estadisticas"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "Sensores (técnico)",
+      "type": "link",
+      "url": "/d/agroiot-sensores",
+      "icon": "dashboard"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "planta",
+        "label": "Planta",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "dwh"
+        },
+        "query": "SELECT DISTINCT entity_id FROM lectura_limpia ORDER BY 1",
+        "refresh": 2,
+        "current": {}
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Alertas",
+        "enable": true,
+        "iconColor": "red",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "dwh"
+        },
+        "target": {
+          "refId": "Anno",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT ts AS time, tipo AS title, mensaje AS text, severidad AS tags FROM alerta WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Estado actual",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "gauge",
+      "title": "Índice de salud",
+      "description": "0-100, mismo cálculo que el panel web (umbrales.js). Última lectura.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 50
+              },
+              {
+                "color": "green",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT GREATEST(0, LEAST(100, 100\n  - CASE WHEN temperature IS NULL THEN 8 ELSE\n      (CASE WHEN temperature < 15 OR temperature > 30 THEN 15 ELSE 0 END)\n    + (CASE WHEN temperature < 10 OR temperature > 35 THEN 20 ELSE 0 END) END\n  - CASE WHEN humidity IS NULL THEN 5 WHEN humidity < 30 OR humidity > 90 THEN 10 ELSE 0 END\n  - CASE WHEN luminosity IS NULL THEN 5 WHEN luminosity < 1000 THEN 15 ELSE 0 END\n  - CASE WHEN soil_moisture IS NULL THEN 10\n         WHEN soil_moisture < 40 THEN LEAST(45, (40 - soil_moisture) * 1.5)\n         WHEN soil_moisture > 85 THEN 15 ELSE 0 END)) AS salud FROM lectura_limpia WHERE entity_id = '$planta' ORDER BY ts DESC LIMIT 1"
+        }
+      ],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Temperatura actual",
+      "description": "Óptimo 10-35, ideal 15-30. Verde = ideal, naranja = aceptable, rojo = fuera de rango.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "min": 0,
+          "max": 45,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "green",
+                "value": 15
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 35
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT temperature FROM lectura_limpia WHERE entity_id = '$planta' AND temperature IS NOT NULL ORDER BY ts DESC LIMIT 1"
+        }
+      ],
+      "id": 3,
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 5,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Humedad del aire actual",
+      "description": "Óptimo 30-90, ideal 40-80. Verde = ideal, naranja = aceptable, rojo = fuera de rango.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "green",
+                "value": 40
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT humidity FROM lectura_limpia WHERE entity_id = '$planta' AND humidity IS NOT NULL ORDER BY ts DESC LIMIT 1"
+        }
+      ],
+      "id": 4,
+      "gridPos": {
+        "x": 9,
+        "y": 1,
+        "w": 5,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Luminosidad actual",
+      "description": "Óptimo 1000-80000, ideal 5000-60000. Verde = ideal, naranja = aceptable, rojo = fuera de rango.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lux",
+          "min": 0,
+          "max": 100000,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1000
+              },
+              {
+                "color": "green",
+                "value": 5000
+              },
+              {
+                "color": "orange",
+                "value": 60000
+              },
+              {
+                "color": "red",
+                "value": 80000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT luminosity FROM lectura_limpia WHERE entity_id = '$planta' AND luminosity IS NOT NULL ORDER BY ts DESC LIMIT 1"
+        }
+      ],
+      "id": 5,
+      "gridPos": {
+        "x": 14,
+        "y": 1,
+        "w": 5,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "gauge",
+      "title": "Humedad del suelo actual",
+      "description": "Óptimo 20-80, ideal 40-70. Verde = ideal, naranja = aceptable, rojo = fuera de rango.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 20
+              },
+              {
+                "color": "green",
+                "value": 40
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT soil_moisture FROM lectura_limpia WHERE entity_id = '$planta' AND soil_moisture IS NOT NULL ORDER BY ts DESC LIMIT 1"
+        }
+      ],
+      "id": 6,
+      "gridPos": {
+        "x": 19,
+        "y": 1,
+        "w": 5,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Salud promedio del periodo",
+      "description": "Promedio del índice de salud en el rango de tiempo elegido.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 50
+              },
+              {
+                "color": "green",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT avg(GREATEST(0, LEAST(100, 100\n  - CASE WHEN temperature IS NULL THEN 8 ELSE\n      (CASE WHEN temperature < 15 OR temperature > 30 THEN 15 ELSE 0 END)\n    + (CASE WHEN temperature < 10 OR temperature > 35 THEN 20 ELSE 0 END) END\n  - CASE WHEN humidity IS NULL THEN 5 WHEN humidity < 30 OR humidity > 90 THEN 10 ELSE 0 END\n  - CASE WHEN luminosity IS NULL THEN 5 WHEN luminosity < 1000 THEN 15 ELSE 0 END\n  - CASE WHEN soil_moisture IS NULL THEN 10\n         WHEN soil_moisture < 40 THEN LEAST(45, (40 - soil_moisture) * 1.5)\n         WHEN soil_moisture > 85 THEN 15 ELSE 0 END))) AS salud FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      ],
+      "id": 7,
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Lecturas en el periodo",
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) AS lecturas FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      ],
+      "id": 8,
+      "gridPos": {
+        "x": 6,
+        "y": 8,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Alertas en el periodo",
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT count(*) AS alertas FROM alerta WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      ],
+      "id": 9,
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Última lectura hace",
+      "description": "Si pasa de 5 min la placa dejó de enviar.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 1800
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT EXTRACT(EPOCH FROM now() - max(ts)) AS segundos FROM lectura_limpia WHERE entity_id = '$planta'"
+        }
+      ],
+      "id": 10,
+      "gridPos": {
+        "x": 18,
+        "y": 8,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Salud de la planta en el tiempo",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Índice de salud (promedio por intervalo)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 100,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 50
+              },
+              {
+                "color": "green",
+                "value": 80
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "scheme",
+            "spanNulls": true,
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT $__timeGroupAlias(ts, $__interval), avg(GREATEST(0, LEAST(100, 100\n  - CASE WHEN temperature IS NULL THEN 8 ELSE\n      (CASE WHEN temperature < 15 OR temperature > 30 THEN 15 ELSE 0 END)\n    + (CASE WHEN temperature < 10 OR temperature > 35 THEN 20 ELSE 0 END) END\n  - CASE WHEN humidity IS NULL THEN 5 WHEN humidity < 30 OR humidity > 90 THEN 10 ELSE 0 END\n  - CASE WHEN luminosity IS NULL THEN 5 WHEN luminosity < 1000 THEN 15 ELSE 0 END\n  - CASE WHEN soil_moisture IS NULL THEN 10\n         WHEN soil_moisture < 40 THEN LEAST(45, (40 - soil_moisture) * 1.5)\n         WHEN soil_moisture > 85 THEN 15 ELSE 0 END))) AS salud FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Estadística descriptiva del periodo",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Resumen estadístico por variable",
+      "description": "Calculado sobre las lecturas limpias del DWH (los valores descartados por el ETL no cuentan).",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "% en óptimo"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 60
+                    },
+                    {
+                      "color": "green",
+                      "value": 85
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT 'Temperatura' AS \"Variable\", '°C' AS \"Unidad\", count(temperature) AS \"N válidas\", round(avg(temperature)::numeric, 2) AS \"Media\", round(min(temperature)::numeric, 2) AS \"Mínimo\", round(max(temperature)::numeric, 2) AS \"Máximo\", round(stddev_samp(temperature)::numeric, 2) AS \"Desv. estándar\", round((percentile_cont(0.5) WITHIN GROUP (ORDER BY temperature))::numeric, 2) AS \"Mediana\", round((percentile_cont(0.05) WITHIN GROUP (ORDER BY temperature))::numeric, 2) AS \"P5\", round((percentile_cont(0.95) WITHIN GROUP (ORDER BY temperature))::numeric, 2) AS \"P95\", round((100.0 * count(*) FILTER (WHERE temperature BETWEEN 10 AND 35) / NULLIF(count(temperature), 0))::numeric, 1) AS \"% en óptimo\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Humedad del aire' AS \"Variable\", '%' AS \"Unidad\", count(humidity) AS \"N válidas\", round(avg(humidity)::numeric, 2) AS \"Media\", round(min(humidity)::numeric, 2) AS \"Mínimo\", round(max(humidity)::numeric, 2) AS \"Máximo\", round(stddev_samp(humidity)::numeric, 2) AS \"Desv. estándar\", round((percentile_cont(0.5) WITHIN GROUP (ORDER BY humidity))::numeric, 2) AS \"Mediana\", round((percentile_cont(0.05) WITHIN GROUP (ORDER BY humidity))::numeric, 2) AS \"P5\", round((percentile_cont(0.95) WITHIN GROUP (ORDER BY humidity))::numeric, 2) AS \"P95\", round((100.0 * count(*) FILTER (WHERE humidity BETWEEN 30 AND 90) / NULLIF(count(humidity), 0))::numeric, 1) AS \"% en óptimo\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Luminosidad' AS \"Variable\", 'lx' AS \"Unidad\", count(luminosity) AS \"N válidas\", round(avg(luminosity)::numeric, 2) AS \"Media\", round(min(luminosity)::numeric, 2) AS \"Mínimo\", round(max(luminosity)::numeric, 2) AS \"Máximo\", round(stddev_samp(luminosity)::numeric, 2) AS \"Desv. estándar\", round((percentile_cont(0.5) WITHIN GROUP (ORDER BY luminosity))::numeric, 2) AS \"Mediana\", round((percentile_cont(0.05) WITHIN GROUP (ORDER BY luminosity))::numeric, 2) AS \"P5\", round((percentile_cont(0.95) WITHIN GROUP (ORDER BY luminosity))::numeric, 2) AS \"P95\", round((100.0 * count(*) FILTER (WHERE luminosity BETWEEN 1000 AND 80000) / NULLIF(count(luminosity), 0))::numeric, 1) AS \"% en óptimo\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Humedad del suelo' AS \"Variable\", '%' AS \"Unidad\", count(soil_moisture) AS \"N válidas\", round(avg(soil_moisture)::numeric, 2) AS \"Media\", round(min(soil_moisture)::numeric, 2) AS \"Mínimo\", round(max(soil_moisture)::numeric, 2) AS \"Máximo\", round(stddev_samp(soil_moisture)::numeric, 2) AS \"Desv. estándar\", round((percentile_cont(0.5) WITHIN GROUP (ORDER BY soil_moisture))::numeric, 2) AS \"Mediana\", round((percentile_cont(0.05) WITHIN GROUP (ORDER BY soil_moisture))::numeric, 2) AS \"P5\", round((percentile_cont(0.95) WITHIN GROUP (ORDER BY soil_moisture))::numeric, 2) AS \"P95\", round((100.0 * count(*) FILTER (WHERE soil_moisture BETWEEN 20 AND 80) / NULLIF(count(soil_moisture), 0))::numeric, 1) AS \"% en óptimo\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      ],
+      "id": 14,
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "% del tiempo en rango óptimo",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 85
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE temperature BETWEEN 10 AND 35) / NULLIF(count(temperature), 0) AS \"Temperatura\", 100.0 * count(*) FILTER (WHERE humidity BETWEEN 30 AND 90) / NULLIF(count(humidity), 0) AS \"Humedad del aire\", 100.0 * count(*) FILTER (WHERE luminosity BETWEEN 1000 AND 80000) / NULLIF(count(luminosity), 0) AS \"Luminosidad\", 100.0 * count(*) FILTER (WHERE soil_moisture BETWEEN 20 AND 80) / NULLIF(count(soil_moisture), 0) AS \"Humedad del suelo\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      ],
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Distribución: bajo / óptimo / alto (%)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bajo"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#60a5fa"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Óptimo"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Alto"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal",
+        "stacking": "normal",
+        "xField": "variable",
+        "showValue": "auto",
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "barWidth": 0.6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT 'Temperatura' AS variable, 100.0 * count(*) FILTER (WHERE temperature < 10) / NULLIF(count(temperature), 0) AS \"Bajo\", 100.0 * count(*) FILTER (WHERE temperature BETWEEN 10 AND 35) / NULLIF(count(temperature), 0) AS \"Óptimo\", 100.0 * count(*) FILTER (WHERE temperature > 35) / NULLIF(count(temperature), 0) AS \"Alto\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Humedad del aire' AS variable, 100.0 * count(*) FILTER (WHERE humidity < 30) / NULLIF(count(humidity), 0) AS \"Bajo\", 100.0 * count(*) FILTER (WHERE humidity BETWEEN 30 AND 90) / NULLIF(count(humidity), 0) AS \"Óptimo\", 100.0 * count(*) FILTER (WHERE humidity > 90) / NULLIF(count(humidity), 0) AS \"Alto\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Luminosidad' AS variable, 100.0 * count(*) FILTER (WHERE luminosity < 1000) / NULLIF(count(luminosity), 0) AS \"Bajo\", 100.0 * count(*) FILTER (WHERE luminosity BETWEEN 1000 AND 80000) / NULLIF(count(luminosity), 0) AS \"Óptimo\", 100.0 * count(*) FILTER (WHERE luminosity > 80000) / NULLIF(count(luminosity), 0) AS \"Alto\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Humedad del suelo' AS variable, 100.0 * count(*) FILTER (WHERE soil_moisture < 20) / NULLIF(count(soil_moisture), 0) AS \"Bajo\", 100.0 * count(*) FILTER (WHERE soil_moisture BETWEEN 20 AND 80) / NULLIF(count(soil_moisture), 0) AS \"Óptimo\", 100.0 * count(*) FILTER (WHERE soil_moisture > 80) / NULLIF(count(soil_moisture), 0) AS \"Alto\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      ],
+      "id": 16,
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "xychart",
+      "title": "Dispersión temperatura (x) vs humedad del aire (y)",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "show": "points",
+            "pointSize": {
+              "fixed": 5
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mapping": "auto",
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT temperature AS \"temperatura\", humidity AS \"humedad\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) AND temperature IS NOT NULL AND humidity IS NOT NULL ORDER BY ts DESC LIMIT 5000"
+        }
+      ],
+      "id": 17,
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "table",
+      "title": "Correlación entre variables",
+      "description": "Pearson: +1 suben juntas, -1 una sube cuando la otra baja, 0 sin relación lineal.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Correlación (Pearson)"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": -1
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "lcd"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "blue",
+                      "value": null
+                    },
+                    {
+                      "color": "text",
+                      "value": -0.3
+                    },
+                    {
+                      "color": "orange",
+                      "value": 0.3
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT 'Temperatura vs Humedad aire' AS \"Par de variables\", round(corr(temperature, humidity)::numeric, 3) AS \"Correlación (Pearson)\", count(*) FILTER (WHERE temperature IS NOT NULL AND humidity IS NOT NULL) AS \"N pares\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Luz vs Temperatura' AS \"Par de variables\", round(corr(luminosity, temperature)::numeric, 3) AS \"Correlación (Pearson)\", count(*) FILTER (WHERE luminosity IS NOT NULL AND temperature IS NOT NULL) AS \"N pares\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Humedad aire vs Humedad suelo' AS \"Par de variables\", round(corr(humidity, soil_moisture)::numeric, 3) AS \"Correlación (Pearson)\", count(*) FILTER (WHERE humidity IS NOT NULL AND soil_moisture IS NOT NULL) AS \"N pares\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)\nUNION ALL\nSELECT 'Temperatura vs Humedad suelo' AS \"Par de variables\", round(corr(temperature, soil_moisture)::numeric, 3) AS \"Correlación (Pearson)\", count(*) FILTER (WHERE temperature IS NOT NULL AND soil_moisture IS NOT NULL) AS \"N pares\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      ],
+      "id": 18,
+      "gridPos": {
+        "x": 12,
+        "y": 37,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Tendencia diaria",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "barchart",
+      "title": "Temperatura diaria: mínima / media / máxima",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mínima"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#60a5fa"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "media"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#fb923c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "máxima"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "never",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xField": "dia"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT to_char(dia, 'YYYY-MM-DD') AS dia, temp_min AS \"mínima\", temp_avg AS \"media\", temp_max AS \"máxima\" FROM resumen_diario WHERE entity_id = '$planta' AND dia BETWEEN $__timeFrom()::date AND $__timeTo()::date ORDER BY dia"
+        }
+      ],
+      "id": 20,
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Humedad diaria promedio: aire y suelo",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "aire"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#38bdf8"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "suelo"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9be15d"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "suelo mínima"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#4d7c0f"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "never",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xField": "dia"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT to_char(dia, 'YYYY-MM-DD') AS dia, hum_avg AS \"aire\", soil_avg AS \"suelo\", soil_min AS \"suelo mínima\" FROM resumen_diario WHERE entity_id = '$planta' AND dia BETWEEN $__timeFrom()::date AND $__timeTo()::date ORDER BY dia"
+        }
+      ],
+      "id": 21,
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Luz diaria: media y máxima",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lux",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "media"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#facc15"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "máxima"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#ca8a04"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "never",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xField": "dia"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT to_char(dia, 'YYYY-MM-DD') AS dia, lux_avg AS \"media\", lux_max AS \"máxima\" FROM resumen_diario WHERE entity_id = '$planta' AND dia BETWEEN $__timeFrom()::date AND $__timeTo()::date ORDER BY dia"
+        }
+      ],
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 54,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Horas de luz suficiente por día (≥ 1000 lx)",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "horas con luz"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#facc15"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "horas con poca luz"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#475569"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "stacking": "normal",
+        "showValue": "never",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xField": "dia"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT to_char(hora AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD') AS dia, count(*) FILTER (WHERE lux_avg >= 1000) AS \"horas con luz\", count(*) FILTER (WHERE lux_avg < 1000) AS \"horas con poca luz\" FROM resumen_horario WHERE entity_id = '$planta' AND $__timeFilter(hora) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "id": 23,
+      "gridPos": {
+        "x": 12,
+        "y": 54,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "id": 24,
+      "type": "row",
+      "title": "Perfil por hora del día (promedio del periodo, hora Colombia)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "barchart",
+      "title": "Temperatura y humedad por hora del día",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "temperatura (°C)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#fb923c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "humedad aire (%)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#38bdf8"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "humedad suelo (%)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9be15d"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "never",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xField": "hora"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT to_char(ts AT TIME ZONE 'America/Bogota', 'HH24') || 'h' AS hora, avg(temperature) AS \"temperatura (°C)\", avg(humidity) AS \"humedad aire (%)\", avg(soil_moisture) AS \"humedad suelo (%)\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "id": 25,
+      "gridPos": {
+        "x": 0,
+        "y": 63,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Luz promedio por hora del día",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lux",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "luz (lx)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#facc15"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "never",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xField": "hora"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT to_char(ts AT TIME ZONE 'America/Bogota', 'HH24') || 'h' AS hora, avg(luminosity) AS \"luz (lx)\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "id": 26,
+      "gridPos": {
+        "x": 12,
+        "y": 63,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "id": 27,
+      "type": "row",
+      "title": "Distribución de valores (histogramas)",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 71,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "histogram",
+      "title": "Temperatura",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#fb923c"
+          },
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "bucketCount": 20,
+        "combine": false,
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT temperature FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) AND temperature IS NOT NULL"
+        }
+      ],
+      "id": 28,
+      "gridPos": {
+        "x": 0,
+        "y": 72,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "histogram",
+      "title": "Humedad del aire",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#38bdf8"
+          },
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "bucketCount": 20,
+        "combine": false,
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT humidity FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) AND humidity IS NOT NULL"
+        }
+      ],
+      "id": 29,
+      "gridPos": {
+        "x": 6,
+        "y": 72,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "histogram",
+      "title": "Luminosidad",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lux",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#facc15"
+          },
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "bucketCount": 20,
+        "combine": false,
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT luminosity FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) AND luminosity IS NOT NULL"
+        }
+      ],
+      "id": 30,
+      "gridPos": {
+        "x": 12,
+        "y": 72,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "histogram",
+      "title": "Humedad del suelo",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9be15d"
+          },
+          "custom": {
+            "fillOpacity": 70,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "bucketCount": 20,
+        "combine": false,
+        "legend": {
+          "showLegend": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT soil_moisture FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) AND soil_moisture IS NOT NULL"
+        }
+      ],
+      "id": 31,
+      "gridPos": {
+        "x": 18,
+        "y": 72,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "id": 32,
+      "type": "row",
+      "title": "Alertas",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 79,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "piechart",
+      "title": "Alertas por tipo",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value"
+          ]
+        },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT tipo, count(*) AS alertas FROM alerta WHERE entity_id = '$planta' AND $__timeFilter(ts) GROUP BY tipo ORDER BY 2 DESC"
+        }
+      ],
+      "id": 33,
+      "gridPos": {
+        "x": 0,
+        "y": 80,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Alertas por día y severidad",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "advertencias"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "errores"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "vertical",
+        "stacking": "normal",
+        "showValue": "never",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": -45,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xField": "dia"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT to_char(ts AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD') AS dia, count(*) FILTER (WHERE severidad = 'warning') AS \"advertencias\", count(*) FILTER (WHERE severidad = 'error') AS \"errores\" FROM alerta WHERE entity_id = '$planta' AND $__timeFilter(ts) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "id": 34,
+      "gridPos": {
+        "x": 8,
+        "y": 80,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "id": 35,
+      "type": "row",
+      "title": "Calidad de los datos",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 88,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Lecturas recibidas por hora",
+      "description": "Con envío cada 30 s se esperan ~120 por hora. Huecos = placa sin conexión.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT $__timeGroupAlias(ts, '1h'), count(*) AS lecturas FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "id": 36,
+      "gridPos": {
+        "x": 0,
+        "y": 89,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "% de lecturas válidas por sensor",
+      "description": "Valores que pasaron la limpieza del ETL (el resto se guardó como NULL: -999, fuera de rango o atípico).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "green",
+                "value": 95
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "lcd",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dwh"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT 100.0 * count(temperature) / NULLIF(count(*), 0) AS \"Temperatura\", 100.0 * count(humidity) / NULLIF(count(*), 0) AS \"Humedad del aire\", 100.0 * count(luminosity) / NULLIF(count(*), 0) AS \"Luminosidad\", 100.0 * count(soil_moisture) / NULLIF(count(*), 0) AS \"Humedad del suelo\" FROM lectura_limpia WHERE entity_id = '$planta' AND $__timeFilter(ts)"
+        }
+      ],
+      "id": 37,
+      "gridPos": {
+        "x": 12,
+        "y": 89,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dwh"
+      }
+    }
+  ]
+}
