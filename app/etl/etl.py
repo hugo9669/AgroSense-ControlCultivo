@@ -84,28 +84,99 @@ def clean(rows):
     return out
 
 
+# ---------------- Imputar (Interpolación Lineal Controlada) ----------------
+# Solo se interpola si el hueco entre el valor previo y el siguiente es <= MAX_IMPUTE_GAP_MS (2 min)
+# para evitar extrapolar durante cortes prolongados o fallas reales del hardware.
+MAX_IMPUTE_GAP_MS = 120 * 1000
+last_valid = {}  # (entity_id, variable) -> (ts_ms, valor)
+
+
+def impute(rows):
+    """Interpola linealmente lecturas ausentes o descartadas si el hueco es <= 2 min.
+
+    Mantiene trazabilidad marcando flags[var + '_imputado'] y el flag global es_imputado.
+    """
+    if not rows:
+        return []
+
+    by_entity = defaultdict(list)
+    for idx, (eid, ts, vals, flags) in enumerate(rows):
+        by_entity[eid].append((idx, ts, vals, flags))
+
+    out = [None] * len(rows)
+
+    for eid, e_rows in by_entity.items():
+        for var in ["temperature", "humidity", "luminosity", "soil_moisture"]:
+            puntos = [(idx, ts, vals[var]) for idx, ts, vals, _ in e_rows]
+
+            for i, (orig_idx, ts, val) in enumerate(puntos):
+                if val is not None:
+                    last_valid[(eid, var)] = (ts, val)
+                    continue
+
+                # val es None: buscar anterior valido
+                t_prev, v_prev = None, None
+                for prev_i in range(i - 1, -1, -1):
+                    if puntos[prev_i][2] is not None:
+                        t_prev, v_prev = puntos[prev_i][1], puntos[prev_i][2]
+                        break
+                if t_prev is None and (eid, var) in last_valid:
+                    t_prev, v_prev = last_valid[(eid, var)]
+
+                # buscar siguiente valido
+                t_next, v_next = None, None
+                for next_i in range(i + 1, len(puntos)):
+                    if puntos[next_i][2] is not None:
+                        t_next, v_next = puntos[next_i][1], puntos[next_i][2]
+                        break
+
+                # Interpolar si ambos extremos existen y el lapso es <= MAX_IMPUTE_GAP_MS
+                if t_prev is not None and t_next is not None and t_prev < ts < t_next:
+                    delta = t_next - t_prev
+                    if delta <= MAX_IMPUTE_GAP_MS:
+                        frac = (ts - t_prev) / delta
+                        interp = v_prev + frac * (v_next - v_prev)
+                        dec = 1 if var == "temperature" else 0
+                        vals_ref = e_rows[i][2]
+                        vals_ref[var] = round(interp, dec)
+                        flags_ref = e_rows[i][3]
+                        flags_ref[var + "_imputado"] = ("imputado", round(interp, dec))
+
+        for idx, ts, vals, flags in e_rows:
+            es_imp = any(k.endswith("_imputado") for k in flags)
+            out[idx] = (eid, ts, vals, flags, es_imp)
+
+    return out
+
+
 # ---------------- Analizar ----------------
 def analyze(rows):
     alerts = []  # (entity_id, ts_ms, severidad, variable, tipo, mensaje)
-    for eid, ts, vals, flags in rows:
-        for k, v in vals.items():
+    for eid, ts, vals, flags, _ in rows:
+        for k in ["temperature", "humidity", "luminosity", "soil_moisture"]:
+            v = vals[k]
             n, u = NOMBRE[k], UNIDAD[k]
             lo, hi = WARN[k]
             if k in flags:
                 motivo, crudo = flags[k]
-                if motivo == "invalido":
+                if f"{k}_imputado" in flags:
+                    v_imp = flags[f"{k}_imputado"][1]
+                    alerts.append((eid, ts, "warning", k, f"{k}_imputado",
+                                   f"Lectura de {n} ausente o inválida ({crudo}): estimada por interpolación ({v_imp} {u})"))
+                elif motivo == "invalido":
                     det = "ausente" if crudo is None else f"fuera de rango físico ({crudo})"
                     alerts.append((eid, ts, "error", k, f"{k}_invalido",
                                    f"Lectura de {n} inválida: {det}. Posible falla o desconexión del sensor"))
                 else:
                     alerts.append((eid, ts, "warning", k, f"{k}_atipico",
                                    f"Valor atípico de {n} descartado: {crudo:.1f} {u} (cambio brusco)"))
-            elif v < lo:
-                alerts.append((eid, ts, "warning", k, f"{k}_bajo",
-                               f"{n.capitalize()} baja: {v:.1f} {u} (mínimo recomendado {lo} {u})"))
-            elif v > hi:
-                alerts.append((eid, ts, "warning", k, f"{k}_alto",
-                               f"{n.capitalize()} alta: {v:.1f} {u} (máximo recomendado {hi} {u})"))
+            elif v is not None:
+                if v < lo:
+                    alerts.append((eid, ts, "warning", k, f"{k}_bajo",
+                                   f"{n.capitalize()} baja: {v:.1f} {u} (mínimo recomendado {lo} {u})"))
+                elif v > hi:
+                    alerts.append((eid, ts, "warning", k, f"{k}_alto",
+                                   f"{n.capitalize()} alta: {v:.1f} {u} (máximo recomendado {hi} {u})"))
     return alerts
 
 
@@ -124,9 +195,15 @@ def insert_alert(cur, eid, ts_ms, sev, var, tipo, msg, dedup_min=DEDUP_MIN):
 
 def load(cur, rows, alerts, since_ms):
     cur.executemany(
-        "INSERT INTO lectura_limpia(entity_id, ts, temperature, humidity, luminosity, soil_moisture) "
-        "VALUES (%s, to_timestamp(%s/1000.0), %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-        [(e, ts, v["temperature"], v["humidity"], v["luminosity"], v["soil_moisture"]) for e, ts, v, _ in rows])
+        """INSERT INTO lectura_limpia(entity_id, ts, temperature, humidity, luminosity, soil_moisture, es_imputado)
+           VALUES (%s, to_timestamp(%s/1000.0), %s, %s, %s, %s, %s)
+           ON CONFLICT (entity_id, ts) DO UPDATE SET
+             temperature = EXCLUDED.temperature,
+             humidity = EXCLUDED.humidity,
+             luminosity = EXCLUDED.luminosity,
+             soil_moisture = EXCLUDED.soil_moisture,
+             es_imputado = EXCLUDED.es_imputado""",
+        [(e, ts, v["temperature"], v["humidity"], v["luminosity"], v["soil_moisture"], imp) for e, ts, v, _, imp in rows])
 
     nuevas = [a for a in alerts if insert_alert(cur, *a)]
 
@@ -196,17 +273,28 @@ def preparar(conn):
             ventanas[(eid, "temperature")].append(t)
         if h is not None:
             ventanas[(eid, "humidity")].append(h)
+    # calentar los ultimos valores validos conocidos para interpolacion
+    for eid, ts, t, h, lx, s in conn.execute("""
+            SELECT DISTINCT ON (entity_id) entity_id, extract(epoch from ts)*1000,
+                   temperature, humidity, luminosity, soil_moisture
+            FROM lectura_limpia ORDER BY entity_id, ts DESC"""):
+        for var, val in [("temperature", t), ("humidity", h), ("luminosity", lx), ("soil_moisture", s)]:
+            if val is not None:
+                last_valid[(eid, var)] = (int(ts), val)
 
 
 def ciclo(conn):
     cur = conn.cursor()
     cur.execute("SELECT coalesce(max(extract(epoch FROM ts))*1000, 0)::bigint FROM lectura_limpia")
     since = cur.fetchone()[0]
-    rows = clean(extract(since))
-    nuevas = load(cur, rows, analyze(rows), since) if rows else []
+    extracted = extract(since)
+    cleaned = clean(extracted)
+    imputed = impute(cleaned)
+    nuevas = load(cur, imputed, analyze(imputed), since) if imputed else []
     nuevas += check_sin_datos(cur)
     notify_orion(nuevas)
-    print(f"ETL ok: {len(rows)} lecturas, {len(nuevas)} alertas nuevas", flush=True)
+    n_imp = sum(1 for r in imputed if r[4])
+    print(f"ETL ok: {len(imputed)} lecturas ({n_imp} con valores imputados), {len(nuevas)} alertas nuevas", flush=True)
 
 
 def main():

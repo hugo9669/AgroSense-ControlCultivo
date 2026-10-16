@@ -9,8 +9,11 @@ CREATE TABLE IF NOT EXISTS lectura_limpia (
   humidity      DOUBLE PRECISION,
   luminosity    DOUBLE PRECISION,
   soil_moisture DOUBLE PRECISION,
+  es_imputado   BOOLEAN     DEFAULT FALSE,
   PRIMARY KEY (entity_id, ts)
 );
+
+ALTER TABLE lectura_limpia ADD COLUMN IF NOT EXISTS es_imputado BOOLEAN DEFAULT FALSE;
 
 -- Agregado horario (alimenta graficas del front, la IA y Grafana)
 CREATE TABLE IF NOT EXISTS resumen_horario (
