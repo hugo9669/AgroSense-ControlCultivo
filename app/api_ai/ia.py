@@ -57,9 +57,12 @@ def preguntar(contexto: str, pregunta: str, historial: list[dict]) -> str:
     intentos = [(m, n) for m in dict.fromkeys([GEMINI_MODEL, GEMINI_MODEL_RESPALDO]) if m for n in range(2)]
     for i, (modelo, n) in enumerate(intentos):
         try:
-            r = httpx.post(URL, timeout=45, headers={"x-goog-api-key": GEMINI_API_KEY},
+            r = httpx.post(URL, timeout=12, headers={"x-goog-api-key": GEMINI_API_KEY},
                            json={"model": modelo, **cuerpo})
         except httpx.TimeoutException:
+            if i < len(intentos) - 1:
+                print(f"Gemini {modelo} excedió 12s, intentando siguiente...", flush=True)
+                continue
             raise HTTPException(status_code=504, detail="Gemini tardó demasiado en responder")
         except httpx.HTTPError as e:
             raise HTTPException(status_code=504, detail=f"No se pudo contactar a Gemini: {e.__class__.__name__}")
