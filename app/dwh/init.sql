@@ -63,3 +63,23 @@ ALTER TABLE alerta ADD COLUMN IF NOT EXISTS variable TEXT;
 
 CREATE INDEX IF NOT EXISTS alerta_ts_idx      ON alerta (ts DESC);
 CREATE INDEX IF NOT EXISTS alerta_entidad_idx ON alerta (entity_id, tipo, ts DESC);
+
+-- Predicciones de siguientes días calculadas por el modelo predictivo
+CREATE TABLE IF NOT EXISTS prediccion_diaria (
+  entity_id           TEXT             NOT NULL,
+  fecha_proyectada    DATE             NOT NULL,
+  fecha_calculo       TIMESTAMPTZ      NOT NULL DEFAULT now(),
+  dias_adelante       INT              NOT NULL,
+  soil_moisture_pred  DOUBLE PRECISION NOT NULL,
+  temp_pred           DOUBLE PRECISION,
+  hum_pred            DOUBLE PRECISION,
+  tendencia           TEXT             NOT NULL,
+  tasa_cambio_diaria  DOUBLE PRECISION NOT NULL,
+  horas_hasta_riego   DOUBLE PRECISION,
+  requiere_riego      BOOLEAN          DEFAULT FALSE,
+  r2                  DOUBLE PRECISION,
+  recomendacion       TEXT,
+  PRIMARY KEY (entity_id, fecha_proyectada)
+);
+
+CREATE INDEX IF NOT EXISTS pred_diaria_idx ON prediccion_diaria (entity_id, fecha_proyectada ASC);

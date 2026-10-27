@@ -4,14 +4,16 @@
 //    - ClosedCube HDC1080 (I2C 0x40): temperatura y humedad del aire
 //    - AP3216 (I2C): luz ambiental (lux)
 //    - Sensor capacitivo/resistivo de humedad de suelo (salida analogica, GPIO39 / ADC1)
-//  Envia un JSON por HTTP al Agente IoT de FIWARE (a traves de nginx :80 en la EC2).
+//  Envia un JSON por HTTP al Agente IoT de FIWARE (a traves de nginx :80 en la EC2) y a un servidor secundario.
 //
 //  CONFIGURACION: copia include/secrets.example.h como include/secrets.h y completa tus datos.
 // =====================================================================================
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <mbedtls/md.h>
 #include <AP3216_WE.h>
 #include <ClosedCube_HDC1080.h>
 
@@ -19,6 +21,22 @@
 #include "secrets.h"
 #else
 #error "Falta include/secrets.h: copia include/secrets.example.h como secrets.h y completa WiFi, IP y apikey"
+#endif
+
+#ifndef SERVER_IP_2
+#define SERVER_IP_2 ""
+#endif
+
+#ifndef USE_HTTPS
+#define USE_HTTPS false
+#endif
+
+#ifndef SERVER_HTTPS_PORT
+#define SERVER_HTTPS_PORT 443
+#endif
+
+#ifndef HMAC_SECRET_KEY
+#define HMAC_SECRET_KEY "agrosense_clave_secreta_firmware_2026"
 #endif
 
 // Intervalo de lectura/envio (30 s). El ETL agrega por hora/dia, asi que puede subirse sin problema.
@@ -124,28 +142,113 @@ void conectarWiFi() {
   }
 }
 
+// Funcion criptografica para generar firma HMAC-SHA256 del paquete JSON (aceleracion por hardware ESP32)
+void calcularHMACSHA256(const char *payload, const char *key, char *outHex) {
+  uint8_t hmacResult[32];
+  mbedtls_md_context_t ctx;
+  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
+  mbedtls_md_hmac_starts(&ctx, (const unsigned char *)key, strlen(key));
+  mbedtls_md_hmac_update(&ctx, (const unsigned char *)payload, strlen(payload));
+  mbedtls_md_hmac_finish(&ctx, hmacResult);
+  mbedtls_md_free(&ctx);
+  for (int i = 0; i < 32; i++) {
+    sprintf(outHex + (i * 2), "%02x", hmacResult[i]);
+  }
+  outHex[64] = '\0';
+}
+
 void enviarDatosServidor(float temp, float humAire, float lux, int humSueloPorc, int humSueloRaw, bool seco) {
-  if (WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[ENVIO OMITIDO] No se envia POST porque la placa NO esta conectada a Wi-Fi.");
+    return;
+  }
 
-  HTTPClient http;
-  http.setTimeout(10000);
-  http.begin(urlServidor);
-  http.addHeader("Content-Type", "application/json");
-
-  // Claves EXACTAS que mapea scripts/provisionar.sh (object_id del dispositivo)
+  // Armar el payload una sola vez
   char jsonPayload[256];
   snprintf(jsonPayload, sizeof(jsonPayload),
     "{\"temperatura_aire\":%.2f,\"humedad_aire\":%.2f,\"luz_lux\":%.2f,"
     "\"humedad_suelo_pct\":%d,\"humedad_suelo_raw\":%d,\"alerta_seco\":%s}",
     temp, humAire, lux, humSueloPorc, humSueloRaw, seco ? "true" : "false");
 
-  int httpCode = http.POST(jsonPayload);
-  if (httpCode > 0) {
-    Serial.printf("[HTTP] Respuesta servidor: %d %s\n", httpCode, httpCode == 200 ? "(OK)" : "");
-  } else {
-    Serial.printf("[HTTP] Error enviando POST: %s\n", http.errorToString(httpCode).c_str());
+  // Autenticación criptográfica del payload con HMAC-SHA256
+  char hmacFirma[65] = {0};
+#if defined(HMAC_SECRET_KEY)
+  calcularHMACSHA256(jsonPayload, HMAC_SECRET_KEY, hmacFirma);
+#endif
+
+  Serial.printf("[PREPARANDO PAQUETE] Payload: %s\n", jsonPayload);
+  if (hmacFirma[0] != '\0') {
+    Serial.printf("[SEGURIDAD END-DEVICE] Firma HMAC-SHA256: %s\n", hmacFirma);
   }
-  http.end();
+
+  // --- 1. ENVÍO AL SERVIDOR ORIGINAL (Soporta TLS/HTTPS seguro y HTTP plano) ---
+  HTTPClient http;
+  http.setTimeout(10000);
+
+  bool esHttps1 = (strncmp(urlServidor, "https://", 8) == 0);
+  if (esHttps1) {
+    WiFiClientSecure clientSecure;
+    clientSecure.setInsecure(); // Cifrado TLS 1.2/1.3 en transito sin hardcodear CA en microcontrolador
+    http.begin(clientSecure, urlServidor);
+    http.addHeader("Content-Type", "application/json");
+    if (hmacFirma[0] != '\0') {
+      http.addHeader("X-Agro-Signature", hmacFirma);
+      http.addHeader("X-Agro-Algorithm", "HMAC-SHA256");
+    }
+    int httpCode1 = http.POST(jsonPayload);
+    Serial.printf("-> Servidor 1 [TLS/HTTPS Cifrado]: %s\n", urlServidor);
+    if (httpCode1 > 0) {
+      Serial.printf("   [HTTPS] Respuesta: %d %s\n", httpCode1, httpCode1 == 200 ? "(OK)" : "");
+    } else {
+      Serial.printf("   [HTTPS Error] POST: %s\n", http.errorToString(httpCode1).c_str());
+    }
+  } else {
+    WiFiClient client;
+    http.begin(client, urlServidor);
+    http.addHeader("Content-Type", "application/json");
+    if (hmacFirma[0] != '\0') {
+      http.addHeader("X-Agro-Signature", hmacFirma);
+      http.addHeader("X-Agro-Algorithm", "HMAC-SHA256");
+    }
+    int httpCode1 = http.POST(jsonPayload);
+    Serial.printf("-> Servidor 1 URL: %s\n", urlServidor);
+    if (httpCode1 > 0) {
+      Serial.printf("   [HTTP] Respuesta: %d %s\n", httpCode1, httpCode1 == 200 ? "(OK)" : "");
+    } else {
+      Serial.printf("   [HTTP] Error enviando POST: %s\n", http.errorToString(httpCode1).c_str());
+    }
+  }
+  http.end(); // Libera los recursos antes de la siguiente conexión
+
+  // --- 2. ENVÍO AL SERVIDOR SECUNDARIO (si está configurado) ---
+  if (strlen(SERVER_IP_2) > 0) {
+    HTTPClient http2;
+    http2.setTimeout(10000);
+    bool esHttps2 = (strncmp(SERVER_IP_2, "https://", 8) == 0);
+    if (esHttps2) {
+      WiFiClientSecure clientSecure2;
+      clientSecure2.setInsecure();
+      http2.begin(clientSecure2, SERVER_IP_2);
+    } else {
+      WiFiClient client2;
+      http2.begin(client2, SERVER_IP_2);
+    }
+    http2.addHeader("Content-Type", "application/json");
+    if (hmacFirma[0] != '\0') {
+      http2.addHeader("X-Agro-Signature", hmacFirma);
+      http2.addHeader("X-Agro-Algorithm", "HMAC-SHA256");
+    }
+    int httpCode2 = http2.POST(jsonPayload);
+    Serial.printf("-> Servidor 2 URL: %s\n", SERVER_IP_2);
+    if (httpCode2 > 0) {
+      Serial.printf("   [HTTP/S] Respuesta: %d %s\n", httpCode2, httpCode2 == 200 ? "(OK)" : "");
+    } else {
+      Serial.printf("   [HTTP/S Error] POST: %s\n", http2.errorToString(httpCode2).c_str());
+    }
+    http2.end();
+  }
 }
 
 void setup() {
@@ -153,9 +256,16 @@ void setup() {
   delay(1000);
   Serial.println("\n--- AgroIoT: monitoreo de cultivo ---");
 
+#if defined(USE_HTTPS) && USE_HTTPS
+  int puerto = (SERVER_PORT == 80) ? SERVER_HTTPS_PORT : SERVER_PORT;
+  snprintf(urlServidor, sizeof(urlServidor), "https://%s:%d/iot/json?k=%s&i=%s",
+           SERVER_HOST, puerto, IOTA_APIKEY, DEVICE_ID);
+  Serial.printf("Servidor Cifrado (TLS/HTTPS): %s\n", urlServidor);
+#else
   snprintf(urlServidor, sizeof(urlServidor), "http://%s:%d/iot/json?k=%s&i=%s",
            SERVER_HOST, SERVER_PORT, IOTA_APIKEY, DEVICE_ID);
   Serial.printf("Servidor: %s\n", urlServidor);
+#endif
 
   pinMode(PIN_HUMEDAD_ANALOG, INPUT);
   analogSetPinAttenuation(PIN_HUMEDAD_ANALOG, ADC_11db);   // rango completo 0-3.3 V

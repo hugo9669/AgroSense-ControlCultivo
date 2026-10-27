@@ -1,0 +1,3 @@
+# Crontab para ejecución periódica del ETL AgroSense cada 5 minutos
+# Elimina el bucle infinito en Python y delega la programación al sistema cron
+*/5 * * * * cd /app && python3 /app/etl.py >> /var/log/cron.log 2>&1

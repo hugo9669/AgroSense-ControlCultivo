@@ -130,10 +130,12 @@ services:
       - CRATE_TABLE=mtopeniot.etplantsensor
       - DWH_DSN=postgresql://${DWH_USER:-dwh}:${DWH_PASSWORD}@dwh:5432/${DWH_DB:-plantas}
       - ORION_URL=http://orion:1026
+      - API_URL=http://api:8000
       - ETL_INTERVAL_SECONDS=300
       - SIN_DATOS_MINUTOS=15
     volumes:
       - ./app/dwh/init.sql:/schema/init.sql:ro   # el ETL aplica el esquema (idempotente) al arrancar
+      - ./app/api_ai/predictivo.py:/app/predictivo.py:ro
 
   # ---------------- Logica de negocio + IA ----------------
   api:

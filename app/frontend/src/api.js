@@ -39,6 +39,24 @@ export const getAlertas = (limit = 50, planta) =>
 export const getResumenAlertas = (planta) =>
   http.get('/alertas/resumen', { params: { planta } }).then((r) => r.data);
 
+// Modelo predictivo agronómico (basado 100% en lecturas reales)
+export const getPrediccion = (pid, horasFuturo = 12) =>
+  http.get(`/plantas/${encodeURIComponent(pid)}/prediccion`, { params: { horas_futuro: horasFuturo } }).then((r) => r.data);
+
+// Consulta a la tabla 'prediccion_diaria' en PostgreSQL con los pronósticos calculados de siguientes días
+export const getPrediccionesGuardadas = (pid) =>
+  http.get(`/plantas/${encodeURIComponent(pid)}/predicciones-guardadas`).then((r) => r.data);
+
+// Envío directo de alerta o notificación a WhatsApp
+export const enviarWhatsAppDirecto = (texto, telefono = '') =>
+  http.post('/notificaciones/whatsapp', { texto, telefono }).then((r) => r.data);
+
+// Helper para construir la URL del WebSocket hacia la API
+export const getWsUrl = () => {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}/api/ws`;
+};
+
 export const chat = (pregunta, planta, historial = []) =>
   http.post('/chat', { pregunta, planta, historial }, { timeout: 90000 })
     .then((r) => String(r.data?.respuesta ?? ''));

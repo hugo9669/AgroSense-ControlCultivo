@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BellRing, Search, AlertOctagon, AlertTriangle, Clock, Loader2, CheckCircle2, WifiOff, AlertCircle } from 'lucide-react';
+import { BellRing, Search, AlertOctagon, AlertTriangle, Clock, Loader2, CheckCircle2, WifiOff, AlertCircle, MessageCircle } from 'lucide-react';
 import { TituloPanel, SeveridadChip, Vacio } from '../components/ui';
 import { getAlertas } from '../api';
 import { VARIABLES, VAR_POR_CLAVE, fechaCorta } from '../lib/umbrales';
@@ -119,12 +119,14 @@ export default function VistaAlertas({ plantaId, refrescoClave }) {
                     <th scope="col" className="px-3 py-3 font-medium">Detalle</th>
                     <th scope="col" className="px-3 py-3 font-medium">Planta</th>
                     <th scope="col" className="px-5 py-3 text-right font-medium">Fecha</th>
+                    <th scope="col" className="px-3 py-3 text-center font-medium">Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/6">
                   {filtradas.slice(0, visibles).map((a) => {
                     const v = VAR_POR_CLAVE[variableDe(a)];
                     const Icono = v?.icono ?? WifiOff;
+                    const waText = encodeURIComponent(`🌱 *AgroSense Alerta* [${(a.severidad || 'AVISO').toUpperCase()}]:\n${a.mensaje}\nPlanta: ${a.entity_id}`);
                     return (
                       <tr key={a.id} className="hover:bg-white/[.02]">
                         <td className="px-5 py-3"><SeveridadChip severidad={a.severidad} /></td>
@@ -139,6 +141,18 @@ export default function VistaAlertas({ plantaId, refrescoClave }) {
                         <td className="px-3 py-3 font-mono text-xs text-niebla">{a.entity_id}</td>
                         <td className="whitespace-nowrap px-5 py-3 text-right font-mono text-xs text-niebla">
                           <time dateTime={a.ts}>{fechaCorta(a.ts)}</time>
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <a
+                            href={`https://wa.me/?text=${waText}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-lg bg-savia/15 px-2 py-1 text-[11px] font-semibold text-savia hover:bg-savia/25 transition"
+                            title="Compartir alerta por WhatsApp"
+                          >
+                            <MessageCircle size={12} />
+                            WhatsApp
+                          </a>
                         </td>
                       </tr>
                     );

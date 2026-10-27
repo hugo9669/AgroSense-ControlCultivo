@@ -11,6 +11,12 @@ export default defineConfig(({ mode }) => ({
   server: {
     // Desarrollo local contra el servidor desplegado:  crea app/frontend/.env.local con
     //   VITE_API=http://32.193.138.160     y ejecuta  npm run dev
-    proxy: { '/api': loadEnv(mode, '.', '').VITE_API || 'http://localhost:8000' },
+    proxy: {
+      '/api': {
+        target: loadEnv(mode, '.', '').VITE_API || 'http://localhost:8000',
+        ws: true,
+        changeOrigin: true,
+      },
+    },
   },
 }))

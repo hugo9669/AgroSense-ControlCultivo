@@ -4,10 +4,12 @@ import { WifiOff, Hourglass, Loader2 } from 'lucide-react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import VistaResumen from '../views/VistaResumen';
+import VistaPrediccion from '../views/VistaPrediccion';
 import VistaAlertas from '../views/VistaAlertas';
 import VistaAsistente from '../views/VistaAsistente';
+import ContenedorToasts from './ToastNotificacion';
 import {
-  getPlantas, getEstado, getAlertas, getResumenAlertas, getLecturas, chat, errorChat, getUsuario,
+  getPlantas, getEstado, getAlertas, getResumenAlertas, getLecturas, chat, errorChat, getUsuario, getWsUrl,
 } from '../api';
 import { VISTAS } from '../lib/vistas';
 import { calcularSalud } from '../lib/umbrales';
@@ -51,9 +53,67 @@ export default function Dashboard({ onLogout }) {
   const [ahora, setAhora] = useState(() => Date.now());
   const [mensajes, setMensajes] = useState(cargarChat);
   const [enviando, setEnviando] = useState(false);
+  const [toasts, setToasts] = useState([]);
 
   const plantaId = plantaSel ?? plantas[0]?.entity_id ?? null;
   const planta = plantas.find((p) => p.entity_id === plantaId) ?? null;
+
+  // Conexión en tiempo real por WebSocket
+  useEffect(() => {
+    let socket = null;
+    let reconectarId = null;
+    let vivo = true;
+
+    const conectarWs = () => {
+      try {
+        const url = getWsUrl();
+        socket = new WebSocket(url);
+
+        socket.onopen = () => {
+          console.log('[WebSocket] Conectado al backend AgroSense');
+        };
+
+        socket.onmessage = (event) => {
+          if (!vivo) return;
+          try {
+            const data = JSON.parse(event.data);
+            const idNotif = `${Date.now()}-${Math.random()}`;
+            setToasts((prev) => [...prev.slice(-3), { ...data, id: idNotif }]);
+
+            // Autocierre en 8 segundos
+            setTimeout(() => {
+              if (vivo) setToasts((prev) => prev.filter((t) => t.id !== idNotif));
+            }, 8000);
+
+            // Refrescar datos en vivo si es una alerta, sincronización o predicción
+            if (['alerta', 'prediccion', 'etl_sincronizado'].includes(data.tipo)) {
+              setTick((t) => t + 1);
+            }
+          } catch {
+            // No JSON
+          }
+        };
+
+        socket.onclose = () => {
+          if (vivo) reconectarId = setTimeout(conectarWs, 5000);
+        };
+
+        socket.onerror = () => {
+          socket?.close();
+        };
+      } catch {
+        if (vivo) reconectarId = setTimeout(conectarWs, 5000);
+      }
+    };
+
+    conectarWs();
+
+    return () => {
+      vivo = false;
+      clearTimeout(reconectarId);
+      socket?.close();
+    };
+  }, []);
 
   // Navegacion por hash (#resumen, #historial...) para que funcione el boton "atras"
   useEffect(() => {
@@ -145,6 +205,10 @@ export default function Dashboard({ onLogout }) {
     enviarIA(p);
   };
 
+  const cerrarToast = (id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   const salud = calcularSalud(planta);
   const datosFrescos = planta ? ahora - new Date(planta.ts).getTime() < 15 * 60 * 1000 : false;
   const alertas24 = (detalle.resumen?.error?.h24 ?? 0) + (detalle.resumen?.warning?.h24 ?? 0);
@@ -159,13 +223,16 @@ export default function Dashboard({ onLogout }) {
         <VistaHistorial plantaId={plantaId} />
       </Suspense>
     );
-  } else if (vista === 'alertas') contenido = <VistaAlertas plantaId={plantaId} refrescoClave={tick} />;
-  else if (vista === 'asistente') {
+  } else if (vista === 'prediccion') {
+    contenido = <VistaPrediccion plantaId={plantaId} tick={tick} onVista={irA} />;
+  } else if (vista === 'alertas') {
+    contenido = <VistaAlertas plantaId={plantaId} refrescoClave={tick} />;
+  } else if (vista === 'asistente') {
     contenido = <VistaAsistente chat={chatProps} planta={planta} plantaId={plantaId} estado={estado} alertas={detalle.alertas} />;
   } else {
     contenido = (
       <VistaResumen planta={planta} lecturas={detalle.lecturas} alertas={detalle.alertas} resumenAlertas={detalle.resumen}
-        salud={salud} estado={estado} datosFrescos={datosFrescos} onVista={irA} onPreguntar={preguntarDesdeResumen} />
+        salud={salud} estado={estado} datosFrescos={datosFrescos} onVista={irA} onPreguntar={preguntarDesdeResumen} tick={tick} />
     );
   }
 
@@ -188,7 +255,7 @@ export default function Dashboard({ onLogout }) {
             {conectado && plantas.length === 0 && (
               <p className="flex items-center gap-3 rounded-2xl border border-cielo/30 bg-cielo/10 px-5 py-4 text-sm text-cielo">
                 <Hourglass size={18} className="shrink-0" aria-hidden="true" />
-                Esperando las primeras lecturas del sensor. El ETL las carga al DWH cada 5 minutos.
+                Esperando las primeras lecturas del sensor. El ETL las carga al DWH de forma continua y bajo demanda.
               </p>
             )}
             <AnimatePresence mode="wait">
@@ -200,6 +267,9 @@ export default function Dashboard({ onLogout }) {
           </div>
         </main>
       </div>
+
+      {/* Notificaciones flotantes en tiempo real por WebSocket */}
+      <ContenedorToasts notificaciones={toasts} onCerrar={cerrarToast} />
     </div>
   );
 }

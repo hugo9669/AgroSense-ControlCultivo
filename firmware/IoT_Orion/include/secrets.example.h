@@ -18,6 +18,16 @@
 // 7896 = directo al agente IoT (solo si abriste ese puerto en el Security Group).
 #define SERVER_PORT    80
 
+// --- Seguridad y Cifrado en Envío del End Device ---
+// true para cifrado TLS/HTTPS en tránsito (puerto 443 con WiFiClientSecure), false para HTTP plano
+#define USE_HTTPS      false
+#define SERVER_HTTPS_PORT 443
+// Clave simétrica compartida para autenticación e integridad criptográfica con HMAC-SHA256
+#define HMAC_SECRET_KEY "agrosense_clave_secreta_firmware_2026"
+
+// --- Servidor Secundario (opcional) ---
+#define SERVER_IP_2    ""
+
 // --- Agente IoT ---
 // Debe ser IGUAL a IOTA_APIKEY del archivo .env del servidor
 // (scripts/setup_ec2.sh lo imprime al final; tambien: grep IOTA_APIKEY ~/agroiot/.env)

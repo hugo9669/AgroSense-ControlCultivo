@@ -42,13 +42,16 @@ bash scripts/crate_auth.sh || exit 1
 paso "6/7 Construir y levantar todos los servicios (la primera vez tarda varios minutos)"
 docker compose up -d --build --remove-orphans || exit 1
 
-paso "7/7 Provisionar agente IoT y suscripcion Orion -> QuantumLeap"
+paso "7/8 Provisionar agente IoT y suscripcion Orion -> QuantumLeap"
 for i in $(seq 1 60); do
   curl -sf http://localhost:4041/iot/about >/dev/null && curl -sf http://localhost:1036/version >/dev/null && break
   sleep 5
 done
 bash scripts/provisionar.sh localhost
 PROV=$?
+
+paso "8/8 Sincronización inmediata del ETL recursivo (sin esperar ciclo de 5 min)"
+docker compose exec -T etl python etl.py --deploy || true
 
 echo
 docker compose ps --format 'table {{.Name}}\t{{.Status}}'

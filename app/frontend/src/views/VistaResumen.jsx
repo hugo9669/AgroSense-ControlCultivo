@@ -1,6 +1,7 @@
 import { BellRing, ArrowRight, Sparkles, Cpu, Radio, Server, Database, Filter, Warehouse, Bot, ChevronRight, CheckCircle2, AlertOctagon, AlertTriangle } from 'lucide-react';
 import HealthGauge from '../components/HealthGauge';
 import MetricCard from '../components/MetricCard';
+import CardPrediccion from '../components/CardPrediccion';
 import { TituloPanel, SeveridadChip, Vacio } from '../components/ui';
 import { VARIABLES, num, fechaCorta } from '../lib/umbrales';
 
@@ -27,7 +28,7 @@ function FlujoDatos({ datosFrescos, estado }) {
     { icono: Radio, nombre: 'Orion', sub: 'Contexto', ok: datosFrescos },
     { icono: Server, nombre: 'QuantumLeap', sub: 'Series', ok: datosFrescos },
     { icono: Database, nombre: 'CrateDB', sub: 'RAW', ok: datosFrescos },
-    { icono: Filter, nombre: 'ETL', sub: 'Python', ok: datosFrescos },
+    { icono: Filter, nombre: 'ETL', sub: 'Recursivo', ok: datosFrescos },
     { icono: Warehouse, nombre: 'DWH', sub: 'Postgres', ok: estado?.db },
     { icono: Bot, nombre: 'IA', sub: 'Gemini', ok: estado?.ia },
   ];
@@ -62,7 +63,7 @@ function FlujoDatos({ datosFrescos, estado }) {
   );
 }
 
-export default function VistaResumen({ planta, lecturas, alertas, resumenAlertas, salud, estado, datosFrescos, onVista, onPreguntar }) {
+export default function VistaResumen({ planta, lecturas, alertas, resumenAlertas, salud, estado, datosFrescos, onVista, onPreguntar, tick }) {
   const recientes = alertas.slice(0, 6);
   const err24 = resumenAlertas?.error?.h24 ?? 0;
   const warn24 = resumenAlertas?.warning?.h24 ?? 0;
@@ -88,6 +89,9 @@ export default function VistaResumen({ planta, lecturas, alertas, resumenAlertas
           ))}
         </div>
       </div>
+
+      {/* Modelo Predictivo Hídrico basado en datos reales */}
+      <CardPrediccion plantaId={planta?.entity_id} tick={tick} onVerDetalle={() => onVista('prediccion')} />
 
       <FlujoDatos datosFrescos={datosFrescos} estado={estado} />
 
