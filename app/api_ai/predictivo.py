@@ -57,7 +57,7 @@ def _correlacion_pearson(x: list[float], y: list[float]) -> float:
 
 
 def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct: float = 30.0, horas_futuro: int = 12, dias_futuro: int = 7) -> dict[str, Any]:
-    """Genera la predicción hídrica y multi-día basada únicamente en las lecturas reales recibidas."""
+    """Genera la predicción hídrica y multi-día calibrada agronómicamente para cultivo de tomate en maceta."""
     validas = [r for r in lecturas_reales if r.get("soil_moisture") is not None and r.get("ts") is not None]
 
     if len(validas) < 3:
@@ -71,7 +71,20 @@ def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct:
 
     validas.sort(key=lambda r: r["ts"])
 
-    t0 = validas[0]["ts"]
+    # 1. Detectar si hubo un evento de riego reciente (salto >= 5% de humedad)
+    # y priorizar la serie de secado posterior a ese pico.
+    idx_inicio = 0
+    for i in range(1, len(validas)):
+        s_prev = float(validas[i - 1]["soil_moisture"])
+        s_curr = float(validas[i]["soil_moisture"])
+        if s_curr - s_prev >= 5.0:
+            idx_inicio = i
+
+    muestras_secado = validas[idx_inicio:]
+    if len(muestras_secado) < 3:
+        muestras_secado = validas
+
+    t0 = muestras_secado[0]["ts"]
     if isinstance(t0, str):
         t0 = datetime.fromisoformat(t0.replace("Z", "+00:00"))
 
@@ -80,7 +93,7 @@ def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct:
     temps: list[float] = []
     luxs: list[float] = []
 
-    for r in validas:
+    for r in muestras_secado:
         ts = r["ts"]
         if isinstance(ts, str):
             ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
@@ -116,10 +129,39 @@ def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct:
     t_actual = float(ultima_lectura.get("temperature") or (sum(temps) / len(temps) if temps else 24.0))
     hum_aire_actual = float(ultima_lectura.get("humidity") or 60.0)
 
-    # 1. Proyección horaria a corto plazo
+    # 2. Modelo agronómico calibrado para tomatera en maceta (evita extrapolaciones de semanas)
+    factor_clima = 1.0
+    if t_actual > 27.0:
+        factor_clima += 0.30
+    elif t_actual < 18.0:
+        factor_clima -= 0.20
+
+    lux_promedio = (sum(luxs) / len(luxs)) if luxs else 5000.0
+    if lux_promedio > 12000.0:
+        factor_clima += 0.20
+    elif lux_promedio < 2000.0:
+        factor_clima -= 0.20
+
+    # Tasa agronómica base para maceta: ~0.55%/h (~13.2% diario)
+    tasa_agro_hora = max(0.35, min(1.20, 0.55 * factor_clima))
+
+    if -2.5 <= m <= -0.20:
+        tasa_secado = abs(m)
+        metodo_calibracion = "sensor_calibrado_ols"
+    elif m < -2.5:
+        tasa_secado = 2.5
+        metodo_calibracion = "acotado_drenaje"
+    else:
+        # Pendiente plana o positiva (noche, sensor quieto, ruido): tasa agronómica realista
+        tasa_secado = tasa_agro_hora
+        metodo_calibracion = "modelo_agronomico_evapotranspiracion"
+
+    tasa_diaria = tasa_secado * 24.0
+
+    # 3. Proyección horaria a corto plazo
     proyecciones_horas = []
     for paso in range(1, horas_futuro + 1):
-        y_estimado = max(0.0, min(100.0, h_actual + (m * paso)))
+        y_estimado = max(0.0, min(100.0, h_actual - (tasa_secado * paso)))
         ts_futuro = ts_ultima + timedelta(hours=paso)
         proyecciones_horas.append({
             "hora_proyectada": ts_futuro.isoformat(),
@@ -127,7 +169,7 @@ def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct:
             "humedad_suelo_estimada": round(y_estimado, 1),
         })
 
-    # 2. Estimación de tiempo crítico de agotamiento de agua
+    # 4. Estimación de tiempo crítico de agotamiento de agua
     horas_hasta_riego = None
     fecha_estimada_riego = None
     alerta_predictiva = None
@@ -140,12 +182,13 @@ def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct:
             "severidad": "warning",
             "mensaje": f"Alerta Predictiva: Suelo en déficit hídrico ({h_actual:.1f}%). Conviene regar de inmediato.",
         }
-    elif m < -0.05:
-        tasa_secado = abs(m)
+    else:
         horas_calculadas = (h_actual - umbral_riego_pct) / tasa_secado
-        horas_hasta_riego = round(horas_calculadas, 1)
-        fecha_riego = ts_ultima + timedelta(hours=horas_calculadas)
+        # Límite agronómico estricto en maceta: reserva máxima creíble de 96 horas (4 días)
+        horas_hasta_riego = round(min(96.0, max(1.0, horas_calculadas)), 1)
+        fecha_riego = ts_ultima + timedelta(hours=horas_hasta_riego)
         fecha_estimada_riego = fecha_riego.isoformat()
+        dias_estimados = round(horas_hasta_riego / 24.0, 1)
 
         if horas_hasta_riego <= 4.0:
             estado_hidrico = "riego_inminente"
@@ -154,27 +197,20 @@ def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct:
                 "severidad": "warning",
                 "mensaje": f"Alerta Predictiva: ¡El agua del suelo se agotará en aprox. {horas_hasta_riego} horas! (Tasa: -{tasa_secado:.2f}%/h).",
             }
-        elif horas_hasta_riego <= 12.0:
+        elif horas_hasta_riego <= 24.0:
             estado_hidrico = "riego_proximo"
-            recomendacion = f"Secado moderado. Se prevé riego necesario en aprox. {horas_hasta_riego} horas ({fecha_riego.strftime('%H:%M')})."
+            recomendacion = f"Secado en curso. Se prevé riego necesario en aprox. {horas_hasta_riego} horas (~{dias_estimados} días)."
         else:
             estado_hidrico = "humedad_estable"
-            recomendacion = f"Humedad adecuada. Con la tasa actual (-{tasa_secado:.2f}%/h), hay reserva para más de {int(horas_hasta_riego)} horas."
-    elif m > 0.05:
-        estado_hidrico = "humedad_en_aumento"
-        recomendacion = f"Humedad en aumento (+{m:.2f}%/h) por riego reciente o saturación."
-    else:
-        estado_hidrico = "estable"
-        recomendacion = "Humedad de suelo estable con variaciones mínimas."
+            recomendacion = f"Humedad adecuada ({h_actual:.1f}%). Reserva estimada para aprox. {dias_estimados} días ({int(horas_hasta_riego)} h) a tasa de -{tasa_secado:.2f}%/h."
 
-    # 3. Proyección Multi-Día para persistir en PostgreSQL ('prediccion_diaria')
+    # 5. Proyección Multi-Día para persistir en PostgreSQL ('prediccion_diaria')
     proyecciones_dias = []
     fecha_base = ts_ultima.date()
-    tasa_diaria = m * 24.0  # cambio por día
 
     for d in range(1, dias_futuro + 1):
         f_proy = fecha_base + timedelta(days=d)
-        h_dia_estimada = max(0.0, min(100.0, h_actual + (tasa_diaria * d)))
+        h_dia_estimada = max(0.0, min(100.0, h_actual - (tasa_diaria * d)))
         req_riego = h_dia_estimada <= umbral_riego_pct
 
         if req_riego:
@@ -190,8 +226,8 @@ def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct:
             "soil_moisture_pred": round(h_dia_estimada, 1),
             "temp_pred": round(t_actual, 1),
             "hum_pred": round(hum_aire_actual, 1),
-            "tendencia": "secando" if m < -0.05 else ("humedeciendo" if m > 0.05 else "estable"),
-            "tasa_cambio_diaria": round(tasa_diaria, 2),
+            "tendencia": "secando",
+            "tasa_cambio_diaria": -round(tasa_diaria, 2),
             "horas_hasta_riego": horas_hasta_riego,
             "requiere_riego": req_riego,
             "r2": r2,
@@ -206,16 +242,17 @@ def entrenar_y_predecir(lecturas_reales: list[dict[str, Any]], umbral_riego_pct:
         "muestras_reales": len(validas),
         "humedad_actual": round(h_actual, 1),
         "umbral_critico_pct": umbral_riego_pct,
-        "tasa_cambio_por_hora": round(m, 3),
-        "tasa_cambio_por_dia": round(tasa_diaria, 2),
-        "tendencia": "secando" if m < -0.05 else ("humedeciendo" if m > 0.05 else "estable"),
+        "tasa_cambio_por_hora": -round(tasa_secado, 3),
+        "tasa_cambio_por_dia": -round(tasa_diaria, 2),
+        "tendencia": "secando" if tasa_secado >= 0.10 else "estable",
         "estado_hidrico": estado_hidrico,
         "horas_hasta_riego": horas_hasta_riego,
         "fecha_estimada_riego": fecha_estimada_riego,
         "metricas_modelo": {
             "r2": r2,
             "rmse": rmse,
-            "confianza": "alta" if r2 >= 0.75 else ("media" if r2 >= 0.4 else "baja"),
+            "confianza": "alta" if (r2 >= 0.70 and metodo_calibracion == "sensor_calibrado_ols") else ("media" if r2 >= 0.35 else "calibrada_agronomica"),
+            "metodo_calibracion": metodo_calibracion,
             "correlacion_temperatura_suelo": corr_temp,
             "correlacion_luz_suelo": corr_lux,
         },

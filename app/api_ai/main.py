@@ -229,8 +229,15 @@ async def obtener_prediccion(pid: str, horas_futuro: int = Query(12, ge=1, le=48
     filas = q(
         "SELECT ts, soil_moisture, temperature, humidity, luminosity "
         "FROM lectura_limpia WHERE entity_id=%s AND soil_moisture IS NOT NULL "
-        "ORDER BY ts DESC LIMIT 120", pid
+        "AND ts >= now() - interval '36 hours' "
+        "ORDER BY ts DESC LIMIT 1200", pid
     )
+    if len(filas) < 10:
+        filas = q(
+            "SELECT ts, soil_moisture, temperature, humidity, luminosity "
+            "FROM lectura_limpia WHERE entity_id=%s AND soil_moisture IS NOT NULL "
+            "ORDER BY ts DESC LIMIT 300", pid
+        )
     cronologicas = filas[::-1]
     res = predictivo.entrenar_y_predecir(cronologicas, umbral_riego_pct=30.0, horas_futuro=horas_futuro, dias_futuro=dias_futuro)
     res["entity_id"] = pid
