@@ -394,9 +394,18 @@ def ejecutar_etl(conn: psycopg.Connection, modo: str = "daemon") -> dict[str, An
             cur.execute(
                 "SELECT ts, soil_moisture, temperature, humidity, luminosity "
                 "FROM lectura_limpia WHERE entity_id=%s AND soil_moisture IS NOT NULL "
-                "ORDER BY ts DESC LIMIT 120", (eid,)
+                "AND ts >= now() - interval '36 hours' "
+                "ORDER BY ts DESC LIMIT 1200", (eid,)
             )
-            filas = [{"ts": r[0], "soil_moisture": r[1], "temperature": r[2], "humidity": r[3], "luminosity": r[4]} for r in cur.fetchall()]
+            filas_raw = cur.fetchall()
+            if len(filas_raw) < 10:
+                cur.execute(
+                    "SELECT ts, soil_moisture, temperature, humidity, luminosity "
+                    "FROM lectura_limpia WHERE entity_id=%s AND soil_moisture IS NOT NULL "
+                    "ORDER BY ts DESC LIMIT 300", (eid,)
+                )
+                filas_raw = cur.fetchall()
+            filas = [{"ts": r[0], "soil_moisture": r[1], "temperature": r[2], "humidity": r[3], "luminosity": r[4]} for r in filas_raw]
             if filas:
                 pred = predictivo.entrenar_y_predecir(filas[::-1], umbral_riego_pct=30.0, dias_futuro=7)
                 if pred.get("disponible") and pred.get("predicciones_diarias"):
