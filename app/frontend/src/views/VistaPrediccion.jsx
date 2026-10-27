@@ -2,18 +2,18 @@ import { useEffect, useState } from 'react';
 import {
   Droplets, TrendingDown, TrendingUp, Minus, Clock, AlertTriangle,
   CheckCircle2, RefreshCw, Send, Database, ShieldCheck, Calendar,
-  BarChart3, Sparkles, MessageCircle, AlertCircle
+  BarChart3, Sparkles, AlertCircle
 } from 'lucide-react';
 import { TituloPanel } from '../components/ui';
-import { getPrediccion, getPrediccionesGuardadas, enviarWhatsAppDirecto } from '../api';
+import { getPrediccion, getPrediccionesGuardadas, enviarTelegramDirecto } from '../api';
 
 export default function VistaPrediccion({ plantaId, tick, onVista }) {
   const [modeloVivo, setModeloVivo] = useState(null);
   const [prediccionesDb, setPrediccionesDb] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
-  const [enviandoWa, setEnviandoWa] = useState(false);
-  const [waExito, setWaExito] = useState(null);
+  const [enviandoTg, setEnviandoTg] = useState(false);
+  const [tgExito, setTgExito] = useState(null);
 
   const cargarDatos = () => {
     if (!plantaId) return;
@@ -36,10 +36,10 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
     cargarDatos();
   }, [plantaId, tick]);
 
-  const enviarAlertaWhatsApp = async () => {
+  const enviarAlertaTelegram = async () => {
     if (!modeloVivo && prediccionesDb.length === 0) return;
-    setEnviandoWa(true);
-    setWaExito(null);
+    setEnviandoTg(true);
+    setTgExito(null);
 
     const hActual = modeloVivo?.humedad_actual ?? (prediccionesDb[0]?.soil_moisture_pred ?? 'N/D');
     const hRiego = modeloVivo?.horas_hasta_riego;
@@ -62,24 +62,20 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
     }
 
     texto += `📋 Recomendación: ${rec}\n` +
-      `_Datos calculados desde PostgreSQL DWH (sin inventar datos)._`;
+      `_Datos calculados desde PostgreSQL DWH._`;
 
     try {
-      const res = await enviarWhatsAppDirecto(texto);
-      if (res?.url_whatsapp) {
-        window.open(res.url_whatsapp, '_blank');
-        setWaExito('Abriendo WhatsApp...');
+      const res = await enviarTelegramDirecto(texto);
+      if (res?.enviado) {
+        setTgExito('¡Alerta enviada a Telegram con éxito! ✈️');
       } else {
-        setWaExito('Notificación procesada exitosamente.');
+        setTgExito(res?.motivo || 'Error al enviar a Telegram');
       }
     } catch {
-      // Fallback a enlace directo wa.me
-      const waUrl = `https://wa.me/?text=${encodeURIComponent(texto)}`;
-      window.open(waUrl, '_blank');
-      setWaExito('Abriendo WhatsApp...');
+      setTgExito('Error al conectar con la API de notificaciones');
     } finally {
-      setEnviandoWa(false);
-      setTimeout(() => setWaExito(null), 6000);
+      setEnviandoTg(false);
+      setTimeout(() => setTgExito(null), 6000);
     }
   };
 
@@ -123,24 +119,24 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
           </button>
 
           <button
-            onClick={enviarAlertaWhatsApp}
-            disabled={enviandoWa || (!modeloVivo && tablaDias.length === 0)}
+            onClick={enviarAlertaTelegram}
+            disabled={enviandoTg || (!modeloVivo && tablaDias.length === 0)}
             className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-lg transition disabled:opacity-50 ${
               esCritico
                 ? 'bg-coral text-noche-950 shadow-coral/30 hover:bg-coral/90 animate-pulse'
-                : 'bg-savia text-noche-950 shadow-savia/20 hover:bg-savia/90'
+                : 'bg-sky-500 text-noche-950 shadow-sky-500/20 hover:bg-sky-400'
             }`}
           >
-            <MessageCircle size={15} />
-            {enviandoWa ? 'Enviando…' : 'Enviar a WhatsApp 📲'}
+            <Send size={15} />
+            {enviandoTg ? 'Enviando…' : 'Enviar a Telegram ✈️'}
           </button>
         </div>
       </div>
 
-      {waExito && (
-        <div className="flex items-center gap-2 rounded-xl border border-savia/30 bg-savia/10 px-4 py-2.5 text-xs text-savia">
+      {tgExito && (
+        <div className="flex items-center gap-2 rounded-xl border border-sky-400/30 bg-sky-500/10 px-4 py-2.5 text-xs text-sky-400">
           <CheckCircle2 size={16} />
-          <span>{waExito}</span>
+          <span>{tgExito}</span>
         </div>
       )}
 
@@ -167,11 +163,11 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
               </p>
               <div className="mt-3 flex items-center gap-3">
                 <button
-                  onClick={enviarAlertaWhatsApp}
+                  onClick={enviarAlertaTelegram}
                   className="rounded-lg bg-coral px-3 py-1.5 text-xs font-bold text-noche-950 hover:bg-coral/90 transition flex items-center gap-1.5"
                 >
-                  <MessageCircle size={14} />
-                  Enviar Alerta Urgente por WhatsApp
+                  <Send size={14} />
+                  Enviar Alerta Urgente a Telegram
                 </button>
               </div>
             </div>
@@ -419,7 +415,7 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
           </div>
           <div className="rounded-xl border border-white/6 bg-white/[.02] p-3.5">
             <span className="font-semibold text-tinta block mb-1">3. Crontab ETL & WebSockets</span>
-            El ETL es ejecutado periódicamente por crontab en el contenedor. Si detecta anomalías o déficit hídrico, emite eventos en tiempo real al WebSocket y genera alertas directas a WhatsApp.
+            El ETL es ejecutado periódicamente por crontab en el contenedor. Si detecta anomalías o déficit hídrico, emite eventos en tiempo real al WebSocket y genera alertas directas a Telegram.
           </div>
         </div>
       </section>

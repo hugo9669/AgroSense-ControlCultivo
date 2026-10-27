@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertOctagon, AlertTriangle, Sparkles, CheckCircle2, Info, X, Droplets, MessageCircle } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Sparkles, CheckCircle2, Info, X, Droplets, Send } from 'lucide-react';
 
 const ICONOS = {
   error: AlertOctagon,
@@ -73,16 +73,16 @@ export default function ContenedorToasts({ notificaciones, onCerrar }) {
                 </div>
                 <p className="mt-1 text-xs text-tinta/90 leading-relaxed">{n.mensaje}</p>
 
-                {(n.whatsapp_link || n.severidad === 'warning' || n.severidad === 'error' || n.tipo === 'prediccion') && (
+                {(n.severidad === 'warning' || n.severidad === 'error' || n.tipo === 'prediccion') && (
                   <div className="mt-2.5 flex items-center gap-2">
                     <a
-                      href={n.whatsapp_link || `https://wa.me/?text=${encodeURIComponent(`🌱 *AgroSense Alerta*: ${n.titulo}\n${n.mensaje}`)}`}
+                      href="https://t.me/agrosense_mi_bot"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-savia/20 px-2.5 py-1 text-[11px] font-semibold text-savia hover:bg-savia/30 transition shadow-sm"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500/20 px-2.5 py-1 text-[11px] font-semibold text-sky-400 hover:bg-sky-500/30 transition shadow-sm"
                     >
-                      <MessageCircle size={13} />
-                      WhatsApp 📲
+                      <Send size={12} />
+                      Ver en Telegram ✈️
                     </a>
                   </div>
                 )}

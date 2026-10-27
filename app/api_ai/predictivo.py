@@ -9,7 +9,7 @@ Capacidades:
 1. Regresión Lineal OLS y Decaimiento Hídrico del suelo (Evapotranspiración).
 2. Estimación de Horas Restantes hasta Déficit Hídrico (Tiempo para Riego).
 3. Pronóstico multi-día persistido en la tabla 'prediccion_diaria' en PostgreSQL.
-4. Generación de Alerta Predictiva y Formateo para WhatsApp y WebSocket.
+4. Generación de Alerta Predictiva y Formateo para Telegram y WebSocket.
 """
 from __future__ import annotations
 

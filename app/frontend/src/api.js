@@ -47,9 +47,9 @@ export const getPrediccion = (pid, horasFuturo = 12) =>
 export const getPrediccionesGuardadas = (pid) =>
   http.get(`/plantas/${encodeURIComponent(pid)}/predicciones-guardadas`).then((r) => r.data);
 
-// Envío directo de alerta o notificación a WhatsApp
-export const enviarWhatsAppDirecto = (texto, telefono = '') =>
-  http.post('/notificaciones/whatsapp', { texto, telefono }).then((r) => r.data);
+// Envío directo de alerta o notificación a Telegram
+export const enviarTelegramDirecto = (texto, chat_id = '') =>
+  http.post('/notificaciones/telegram', { texto, chat_id }).then((r) => r.data);
 
 // Helper para construir la URL del WebSocket hacia la API
 export const getWsUrl = () => {

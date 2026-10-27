@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BellRing, Search, AlertOctagon, AlertTriangle, Clock, Loader2, CheckCircle2, WifiOff, AlertCircle, MessageCircle } from 'lucide-react';
+import { BellRing, Search, AlertOctagon, AlertTriangle, Clock, Loader2, CheckCircle2, WifiOff, AlertCircle, Send } from 'lucide-react';
 import { TituloPanel, SeveridadChip, Vacio } from '../components/ui';
 import { getAlertas } from '../api';
 import { VARIABLES, VAR_POR_CLAVE, fechaCorta } from '../lib/umbrales';
@@ -126,7 +126,6 @@ export default function VistaAlertas({ plantaId, refrescoClave }) {
                   {filtradas.slice(0, visibles).map((a) => {
                     const v = VAR_POR_CLAVE[variableDe(a)];
                     const Icono = v?.icono ?? WifiOff;
-                    const waText = encodeURIComponent(`🌱 *AgroSense Alerta* [${(a.severidad || 'AVISO').toUpperCase()}]:\n${a.mensaje}\nPlanta: ${a.entity_id}`);
                     return (
                       <tr key={a.id} className="hover:bg-white/[.02]">
                         <td className="px-5 py-3"><SeveridadChip severidad={a.severidad} /></td>
@@ -144,14 +143,14 @@ export default function VistaAlertas({ plantaId, refrescoClave }) {
                         </td>
                         <td className="px-3 py-3 text-center">
                           <a
-                            href={`https://wa.me/?text=${waText}`}
+                            href="https://t.me/agrosense_mi_bot"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded-lg bg-savia/15 px-2 py-1 text-[11px] font-semibold text-savia hover:bg-savia/25 transition"
-                            title="Compartir alerta por WhatsApp"
+                            className="inline-flex items-center gap-1 rounded-lg bg-sky-500/15 px-2 py-1 text-[11px] font-semibold text-sky-400 hover:bg-sky-500/25 transition"
+                            title="Ver en Telegram"
                           >
-                            <MessageCircle size={12} />
-                            WhatsApp
+                            <Send size={12} />
+                            Telegram
                           </a>
                         </td>
                       </tr>

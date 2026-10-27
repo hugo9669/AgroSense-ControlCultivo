@@ -1,5 +1,5 @@
 """API AgroIoT: lee el DWH (Postgres) y expone plantas, historial, alertas, chat IA,
-modelo predictivo multi-día persistido en PostgreSQL, WebSocket en tiempo real y alertas WhatsApp.
+modelo predictivo multi-día persistido en PostgreSQL, WebSocket en tiempo real y alertas Telegram.
 
 Login sencillo: usuario/clave del .env -> token firmado con HMAC (8 h).
 Rutas /api/login, /api/estado y /api/ws no exigen token para conexión inicial.
@@ -132,9 +132,8 @@ class NotificacionPayload(BaseModel):
 
 @app.post("/api/notificaciones/emitir")
 async def emitir_notificacion_externa(n: NotificacionPayload):
-    """Emite la notificación a WebSockets y a WhatsApp si aplica."""
-    texto_wa = notificaciones.formatear_mensaje_whatsapp(n.tipo, n.titulo, n.mensaje, n.datos)
-    link_wa = notificaciones.generar_link_whatsapp(texto_wa)
+    """Emite la notificación a WebSockets y a Telegram si aplica."""
+    texto_alerta = notificaciones.formatear_mensaje_alerta(n.tipo, n.titulo, n.mensaje, n.datos)
 
     msg = {
         "tipo": n.tipo,
@@ -143,16 +142,15 @@ async def emitir_notificacion_externa(n: NotificacionPayload):
         "severidad": n.severidad,
         "ts": n.ts or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "datos": n.datos,
-        "whatsapp_texto": texto_wa,
-        "whatsapp_link": link_wa,
+        "mensaje_alerta": texto_alerta,
     }
     await notificador.emitir(msg)
 
-    # Intento de envío automático por WhatsApp / Telegram si es crítica
+    # Intento de envío automático por Telegram si es crítica o predictiva
     if n.severidad in ("warning", "error") or n.tipo == "prediccion":
-        notificaciones.despachar_alerta_externa(texto_wa)
+        notificaciones.despachar_alerta_externa(texto_alerta)
 
-    return {"status": "ok", "clientes_conectados": len(notificador.conexiones), "whatsapp_link": link_wa}
+    return {"status": "ok", "clientes_conectados": len(notificador.conexiones)}
 
 
 # ---------------- Datos del DWH ----------------
@@ -177,7 +175,6 @@ def estado():
         "ia": ia.configurada(),
         "modelo": ia.GEMINI_MODEL,
         "ws_clientes": len(notificador.conexiones),
-        "whatsapp_habilitado": bool(notificaciones.WHATSAPP_PHONE and notificaciones.WHATSAPP_APIKEY),
         "telegram_habilitado": bool(notificaciones.TELEGRAM_BOT_TOKEN and notificaciones.TELEGRAM_CHAT_ID),
     }
 
@@ -257,9 +254,7 @@ async def obtener_prediccion(pid: str, horas_futuro: int = Query(12, ge=1, le=48
             "tasa_cambio": res.get("tasa_cambio_por_hora"),
             "tendencia": res.get("tendencia"),
         }
-        texto_wa = notificaciones.formatear_mensaje_whatsapp("prediccion", f"Déficit Hídrico · {pid}", ap["mensaje"], msg_datos)
-        link_wa = notificaciones.generar_link_whatsapp(texto_wa)
-        res["whatsapp_link"] = link_wa
+        texto_alerta = notificaciones.formatear_mensaje_alerta("prediccion", f"Déficit Hídrico · {pid}", ap["mensaje"], msg_datos)
 
         await notificador.emitir({
             "tipo": "prediccion",
@@ -268,12 +263,12 @@ async def obtener_prediccion(pid: str, horas_futuro: int = Query(12, ge=1, le=48
             "severidad": ap.get("severidad", "warning"),
             "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "datos": msg_datos,
-            "whatsapp_link": link_wa,
+            "mensaje_alerta": texto_alerta,
         })
 
-        # Envío a WhatsApp y Telegram si el déficit ocurrirá en menos de 6 horas
+        # Envío a Telegram si el déficit ocurrirá en menos de 6 horas
         if h_riego is not None and h_riego <= 6.0:
-            notificaciones.despachar_alerta_externa(texto_wa)
+            notificaciones.despachar_alerta_externa(texto_alerta)
 
     return res
 
@@ -288,17 +283,6 @@ def predicciones_guardadas(pid: str):
         "FROM prediccion_diaria WHERE entity_id=%s AND fecha_proyectada >= current_date "
         "ORDER BY fecha_proyectada ASC", pid
     )
-
-
-class MensajeWhatsAppInput(BaseModel):
-    texto: str
-    telefono: str = ""
-
-
-@app.post("/api/notificaciones/whatsapp", dependencies=[Depends(require_auth)])
-def enviar_whatsapp_directo(w: MensajeWhatsAppInput):
-    """Permite el envío manual o de prueba de WhatsApp."""
-    return notificaciones.enviar_whatsapp_automatico(w.texto, w.telefono)
 
 
 class MensajeTelegramInput(BaseModel):
