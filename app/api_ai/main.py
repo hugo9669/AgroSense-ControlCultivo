@@ -175,7 +175,7 @@ def estado():
         "ia": ia.configurada(),
         "modelo": ia.GEMINI_MODEL,
         "ws_clientes": len(notificador.conexiones),
-        "telegram_habilitado": bool(notificaciones.TELEGRAM_BOT_TOKEN and notificaciones.TELEGRAM_CHAT_ID),
+        "telegram_habilitado": bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID")),
     }
 
 

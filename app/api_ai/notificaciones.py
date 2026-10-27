@@ -2,20 +2,15 @@
 
 Soporta:
 1. Notificaciones en tiempo real vía WebSocket a la interfaz web.
-2. Notificaciones automatizadas push a Telegram (vía Bot API oficial).
+2. Notificaciones automatizadas push a Telegram (vía Bot API oficial usando urllib estándar).
 """
 from __future__ import annotations
 
+import json
 import os
+import urllib.parse
+import urllib.request
 from typing import Any
-
-try:
-    import requests
-except ImportError:
-    requests = None
-
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
 def formatear_mensaje_alerta(tipo: str, titulo: str, mensaje: str, datos: dict[str, Any] | None = None) -> str:
@@ -49,16 +44,16 @@ def formatear_mensaje_alerta(tipo: str, titulo: str, mensaje: str, datos: dict[s
         f"🌿 *Planta:* `{planta}`\n"
         f"{severidad_emoji}: {titulo}\n"
         f"📝 *Detalle:* {mensaje}\n"
-        f"🌐 Revisa el panel de control en tu navegador."
+        f"🌐 Revisa el panel de control: http://32.193.138.160"
     )
 
 
 def enviar_telegram_automatico(texto: str, chat_id: str = "", bot_token: str = "") -> dict[str, Any]:
     """Envía un mensaje a Telegram a través de la API oficial de bots de Telegram."""
-    cid = chat_id or TELEGRAM_CHAT_ID
-    tok = bot_token or TELEGRAM_BOT_TOKEN
+    cid = chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")
+    tok = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
-    if not cid or not tok or requests is None:
+    if not cid or not tok:
         return {
             "enviado": False,
             "motivo": "Credenciales de Telegram (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID) no configuradas en .env",
@@ -66,30 +61,40 @@ def enviar_telegram_automatico(texto: str, chat_id: str = "", bot_token: str = "
 
     try:
         url = f"https://api.telegram.org/bot{tok}/sendMessage"
-        payload = {
-            "chat_id": cid,
+        payload = json.dumps({
+            "chat_id": str(cid),
             "text": texto,
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,
-        }
-        r = requests.post(url, json=payload, timeout=10)
-        res_json = r.json() if r.status_code == 200 else {}
-        exito = r.status_code == 200 and res_json.get("ok", False)
-        return {
-            "enviado": exito,
-            "status_code": r.status_code,
-            "respuesta": res_json,
-        }
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            exito = bool(data.get("ok", False))
+            return {
+                "enviado": exito,
+                "status_code": resp.status,
+                "respuesta": data,
+            }
     except Exception as e:
         return {
             "enviado": False,
             "error": str(e),
+            "motivo": f"Error al comunicar con Telegram: {e}",
         }
 
 
 def despachar_alerta_externa(texto: str) -> dict[str, Any]:
     """Envía la alerta por el canal automático de Telegram."""
+    tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    cid = os.environ.get("TELEGRAM_CHAT_ID", "")
     res = {}
-    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
-        res["telegram"] = enviar_telegram_automatico(texto)
+    if tok and cid:
+        res["telegram"] = enviar_telegram_automatico(texto, cid, tok)
     return res
