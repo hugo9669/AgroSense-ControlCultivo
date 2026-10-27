@@ -77,6 +77,7 @@ def enviar_whatsapp_automatico(texto: str, telefono: str = "", apikey: str = "")
             "enviado": False,
             "motivo": "Credenciales de WhatsApp (WHATSAPP_PHONE / WHATSAPP_APIKEY) no configuradas en .env",
             "link_manual": generar_link_whatsapp(texto, tel),
+            "url_whatsapp": generar_link_whatsapp(texto, tel),
         }
 
     try:
@@ -84,16 +85,18 @@ def enviar_whatsapp_automatico(texto: str, telefono: str = "", apikey: str = "")
         url = "https://api.callmebot.com/whatsapp.php"
         params = {"phone": tel, "text": texto, "apikey": key}
         r = requests.get(url, params=params, timeout=10)
-        exito = r.status_code == 200 and "Message queued" in r.text or "ok" in r.text.lower()
+        exito = r.status_code == 200 and ("Message queued" in r.text or "ok" in r.text.lower())
         return {
             "enviado": exito,
             "status_code": r.status_code,
             "respuesta": r.text[:200],
             "link_manual": generar_link_whatsapp(texto, tel),
+            "url_whatsapp": generar_link_whatsapp(texto, tel),
         }
     except Exception as e:
         return {
             "enviado": False,
             "error": str(e),
             "link_manual": generar_link_whatsapp(texto, tel),
+            "url_whatsapp": generar_link_whatsapp(texto, tel),
         }

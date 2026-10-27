@@ -152,6 +152,8 @@ services:
       - AUTH_SECRET=${AUTH_SECRET:?define AUTH_SECRET en .env}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
+      - WHATSAPP_PHONE=${WHATSAPP_PHONE:-}
+      - WHATSAPP_APIKEY=${WHATSAPP_APIKEY:-}
 
   # ---------------- Presentacion ----------------
   frontend:
