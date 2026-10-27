@@ -148,9 +148,9 @@ async def emitir_notificacion_externa(n: NotificacionPayload):
     }
     await notificador.emitir(msg)
 
-    # Intento de envío automático por WhatsApp si es crítica
+    # Intento de envío automático por WhatsApp / Telegram si es crítica
     if n.severidad in ("warning", "error") or n.tipo == "prediccion":
-        notificaciones.enviar_whatsapp_automatico(texto_wa)
+        notificaciones.despachar_alerta_externa(texto_wa)
 
     return {"status": "ok", "clientes_conectados": len(notificador.conexiones), "whatsapp_link": link_wa}
 
@@ -178,6 +178,7 @@ def estado():
         "modelo": ia.GEMINI_MODEL,
         "ws_clientes": len(notificador.conexiones),
         "whatsapp_habilitado": bool(notificaciones.WHATSAPP_PHONE and notificaciones.WHATSAPP_APIKEY),
+        "telegram_habilitado": bool(notificaciones.TELEGRAM_BOT_TOKEN and notificaciones.TELEGRAM_CHAT_ID),
     }
 
 
@@ -270,9 +271,9 @@ async def obtener_prediccion(pid: str, horas_futuro: int = Query(12, ge=1, le=48
             "whatsapp_link": link_wa,
         })
 
-        # Envío a WhatsApp si el déficit ocurrirá en menos de 6 horas
+        # Envío a WhatsApp y Telegram si el déficit ocurrirá en menos de 6 horas
         if h_riego is not None and h_riego <= 6.0:
-            notificaciones.enviar_whatsapp_automatico(texto_wa)
+            notificaciones.despachar_alerta_externa(texto_wa)
 
     return res
 
@@ -298,6 +299,17 @@ class MensajeWhatsAppInput(BaseModel):
 def enviar_whatsapp_directo(w: MensajeWhatsAppInput):
     """Permite el envío manual o de prueba de WhatsApp."""
     return notificaciones.enviar_whatsapp_automatico(w.texto, w.telefono)
+
+
+class MensajeTelegramInput(BaseModel):
+    texto: str
+    chat_id: str = ""
+
+
+@app.post("/api/notificaciones/telegram", dependencies=[Depends(require_auth)])
+def enviar_telegram_directo(t: MensajeTelegramInput):
+    """Permite el envío manual o de prueba de Telegram."""
+    return notificaciones.enviar_telegram_automatico(t.texto, t.chat_id)
 
 
 # ---------------- Disparador Bajo Demanda del ETL ----------------

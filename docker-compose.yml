@@ -154,6 +154,8 @@ services:
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
       - WHATSAPP_PHONE=${WHATSAPP_PHONE:-}
       - WHATSAPP_APIKEY=${WHATSAPP_APIKEY:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
 
   # ---------------- Presentacion ----------------
   frontend:
