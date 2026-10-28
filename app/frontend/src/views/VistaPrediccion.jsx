@@ -108,6 +108,11 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <span className="flex items-center gap-2 rounded-xl border border-sky-400/30 bg-sky-500/10 px-3.5 py-2 text-xs font-medium text-sky-400">
+            <Send size={14} />
+            Alertas automáticas a Telegram activas ✈️
+          </span>
+
           <button
             onClick={cargarDatos}
             disabled={cargando}
@@ -117,28 +122,8 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
             <RefreshCw size={14} className={cargando ? 'animate-spin' : ''} />
             Actualizar
           </button>
-
-          <button
-            onClick={enviarAlertaTelegram}
-            disabled={enviandoTg || (!modeloVivo && tablaDias.length === 0)}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold shadow-lg transition disabled:opacity-50 ${
-              esCritico
-                ? 'bg-coral text-noche-950 shadow-coral/30 hover:bg-coral/90 animate-pulse'
-                : 'bg-sky-500 text-noche-950 shadow-sky-500/20 hover:bg-sky-400'
-            }`}
-          >
-            <Send size={15} />
-            {enviandoTg ? 'Enviando…' : 'Enviar a Telegram ✈️'}
-          </button>
         </div>
       </div>
-
-      {tgExito && (
-        <div className="flex items-center gap-2 rounded-xl border border-sky-400/30 bg-sky-500/10 px-4 py-2.5 text-xs text-sky-400">
-          <CheckCircle2 size={16} />
-          <span>{tgExito}</span>
-        </div>
-      )}
 
       {/* Alerta de Déficit Hídrico Inminente */}
       {esCritico && (
@@ -160,16 +145,8 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
                 Según la tasa de evapotranspiración calculada en el DWH, el contenido de humedad descenderá
                 por debajo del umbral de estrés hídrico (30%) en aproximadamente{' '}
                 <strong className="text-white font-mono">{modeloVivo.horas_hasta_riego} horas</strong>.
+                El aviso automático ya fue despachado a Telegram por el ETL.
               </p>
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={enviarAlertaTelegram}
-                  className="rounded-lg bg-coral px-3 py-1.5 text-xs font-bold text-noche-950 hover:bg-coral/90 transition flex items-center gap-1.5"
-                >
-                  <Send size={14} />
-                  Enviar Alerta Urgente a Telegram
-                </button>
-              </div>
             </div>
           </div>
         </div>

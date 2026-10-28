@@ -48,7 +48,8 @@ WARN = {"temperature": (10, 35), "humidity": (30, 90), "luminosity": (1000, 8000
 OUTLIER_MIN_DELTA = {"temperature": 6.0, "humidity": 20.0}
 OUTLIER_K = 5
 VENTANA = 20
-DEDUP_MIN = 30
+DEDUP_MIN = int(os.environ.get("ALERTA_DEDUP_MIN", "15"))
+TELEGRAM_PRED_INTERVAL_SEC = int(os.environ.get("TELEGRAM_PRED_INTERVAL_SEC", "900"))
 
 NOMBRE = {"temperature": "temperatura", "humidity": "humedad del aire",
           "luminosity": "luminosidad", "soil_moisture": "humedad del suelo"}
@@ -374,15 +375,16 @@ def ejecutar_etl(conn: psycopg.Connection, modo: str = "daemon") -> dict[str, An
 
     if stats["alertas"]:
         notify_orion(stats["alertas"])
-        # Emitir notificación al WebSocket del frontend si se detectaron alertas
-        for a in stats["alertas"]:
+        # Emitir notificación automática al WebSocket y a Telegram por cada tipo de alerta detectada
+        alertas_unicas = {(a[0], a[4]): a for a in stats["alertas"]}.values()
+        for a in alertas_unicas:
             eid, _, sev, var, tipo, msg = a
             notificar_websocket(
                 tipo="alerta",
                 titulo=f"Alerta en {eid}: {tipo}",
                 mensaje=msg,
                 severidad=sev,
-                datos={"planta_id": eid, "variable": var, "tipo": tipo},
+                datos={"planta_id": eid, "variable": var, "tipo": tipo, "severidad": sev},
             )
 
     # Persistir predicciones de siguientes días en PostgreSQL (prediccion_diaria)
@@ -412,16 +414,40 @@ def ejecutar_etl(conn: psycopg.Connection, modo: str = "daemon") -> dict[str, An
                     n_preds = predictivo.guardar_predicciones_en_db(cur, eid, pred["predicciones_diarias"])
                     print(f"ETL: {n_preds} días de predicciones guardados en tabla 'prediccion_diaria' para {eid}", flush=True)
 
-                # Si hay alerta predictiva de déficit hídrico crítico
-                if pred.get("disponible") and pred.get("alerta_predictiva"):
-                    ap = pred["alerta_predictiva"]
-                    notificar_websocket(
-                        tipo="prediccion",
-                        titulo=f"Alerta Predictiva Hídrica · {eid}",
-                        mensaje=ap["mensaje"],
-                        severidad=ap.get("severidad", "warning"),
-                        datos={"planta_id": eid, "horas_hasta_riego": pred.get("horas_hasta_riego"), "humedad_actual": pred.get("humedad_actual")},
-                    )
+                # Envío automático periódico a Telegram y WebSocket del pronóstico hídrico (cada 15 min o ante alerta crítica)
+                if pred.get("disponible"):
+                    ap = pred.get("alerta_predictiva")
+                    ts_file = f"/tmp/ultimo_telegram_pred_{eid}.ts"
+                    ahora_s = time.time()
+                    ultimo_envio = 0.0
+                    try:
+                        if os.path.exists(ts_file):
+                            with open(ts_file, "r", encoding="utf-8") as f:
+                                ultimo_envio = float(f.read().strip() or 0.0)
+                    except Exception:
+                        ultimo_envio = 0.0
+
+                    if ap or (ahora_s - ultimo_envio >= TELEGRAM_PRED_INTERVAL_SEC):
+                        mensaje_pred = ap["mensaje"] if ap else pred.get("recomendacion_agronomica", "Monitoreo predictivo activo.")
+                        sev_pred = ap.get("severidad", "warning") if ap else "warning"
+                        notificar_websocket(
+                            tipo="prediccion",
+                            titulo=f"Alerta Predictiva Hídrica · {eid}",
+                            mensaje=mensaje_pred,
+                            severidad=sev_pred,
+                            datos={
+                                "planta_id": eid,
+                                "horas_hasta_riego": pred.get("horas_hasta_riego"),
+                                "humedad_actual": pred.get("humedad_actual"),
+                                "tasa_cambio": pred.get("tasa_cambio_por_hora"),
+                                "tasa_cambio_diaria": pred.get("tasa_cambio_por_dia"),
+                            },
+                        )
+                        try:
+                            with open(ts_file, "w", encoding="utf-8") as f:
+                                f.write(str(ahora_s))
+                        except Exception:
+                            pass
     except Exception as e:
         print("Aviso al calcular predicciones en ETL:", e, flush=True)
 
