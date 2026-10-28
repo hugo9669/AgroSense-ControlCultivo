@@ -2,23 +2,325 @@ import { useEffect, useState } from 'react';
 import {
   Droplets, TrendingDown, TrendingUp, Minus, Clock, AlertTriangle,
   CheckCircle2, RefreshCw, Send, Database, ShieldCheck, Calendar,
-  BarChart3, Sparkles, AlertCircle
+  Thermometer, Sun, Sprout, AlertCircle
 } from 'lucide-react';
-import { TituloPanel } from '../components/ui';
-import { getPrediccion, getPrediccionesGuardadas, enviarTelegramDirecto } from '../api';
+import {
+  ResponsiveContainer, ComposedChart, Line, Area, XAxis, YAxis,
+  CartesianGrid, Tooltip, ReferenceLine
+} from 'recharts';
+import { getPrediccion, getPrediccionesGuardadas } from '../api';
 
-export default function VistaPrediccion({ plantaId, tick, onVista }) {
+const CONFIG_VARIABLES = [
+  {
+    clave: 'soil_moisture',
+    titulo: 'Humedad del suelo',
+    unidad: '%',
+    decimales: 1,
+    icono: Sprout,
+    colorReal: '#34d399',
+    colorTrain: '#38bdf8',
+    colorTest: '#fb923c',
+    colorPred: '#9be15d',
+  },
+  {
+    clave: 'temperature',
+    titulo: 'Temperatura del aire',
+    unidad: '°C',
+    decimales: 1,
+    icono: Thermometer,
+    colorReal: '#34d399',
+    colorTrain: '#38bdf8',
+    colorTest: '#fb923c',
+    colorPred: '#34d399',
+  },
+  {
+    clave: 'luminosity',
+    titulo: 'Luminosidad',
+    unidad: 'lx',
+    decimales: 0,
+    icono: Sun,
+    colorReal: '#facc15',
+    colorTrain: '#38bdf8',
+    colorTest: '#fb923c',
+    colorPred: '#facc15',
+  },
+  {
+    clave: 'humidity',
+    titulo: 'Humedad del aire',
+    unidad: '%',
+    decimales: 1,
+    icono: Droplets,
+    colorReal: '#38bdf8',
+    colorTrain: '#38bdf8',
+    colorTest: '#fb923c',
+    colorPred: '#34d399',
+  },
+];
+
+function fmtVal(v, dec = 1) {
+  if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
+  return Number(v).toFixed(dec);
+}
+
+function TooltipPrediccion({ active, payload, label, unidad, decimales }) {
+  if (!active || !payload?.length) return null;
+  const horaStr = new Date(label).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="rounded-xl border border-white/10 bg-noche-900/95 px-3.5 py-2.5 text-xs shadow-xl backdrop-blur">
+      <p className="mb-1.5 font-mono font-semibold text-tinta">{horaStr}</p>
+      {payload.map((p) => {
+        if (p.dataKey === 'banda_max' || p.dataKey === 'banda_min' || p.value == null) return null;
+        return (
+          <p key={p.dataKey} className="flex items-center gap-2 text-niebla">
+            <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+            <span>{p.name}:</span>
+            <span className="font-mono font-semibold text-tinta">
+              {fmtVal(p.value, decimales)} {unidad}
+            </span>
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function TarjetaGraficaPrediccion({ conf, modeloVar }) {
+  const Icono = conf.icono;
+  if (!modeloVar || !modeloVar.disponible || !modeloVar.serie_grafica?.length) {
+    return (
+      <article className="panel p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Icono size={18} style={{ color: conf.colorPred }} />
+            <h3 className="text-base font-bold text-tinta">{conf.titulo}</h3>
+          </div>
+          <span className="rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-niebla">
+            Sin evaluar
+          </span>
+        </div>
+        <p className="mt-4 text-xs text-niebla">
+          Acumulando lecturas continuas en el DWH para entrenar el pronóstico recursivo de {conf.titulo.toLowerCase()}…
+        </p>
+      </article>
+    );
+  }
+
+  const {
+    horizonte,
+    tendencia_hora,
+    horas_ventana,
+    muestras_ventana,
+    n_train,
+    n_test,
+    r2,
+    rmse,
+    ultima_lectura_ts,
+    serie_grafica,
+  } = modeloVar;
+
+  const h1 = horizonte?.h1 ?? {};
+  const h3 = horizonte?.h3 ?? {};
+  const h6 = horizonte?.h6 ?? {};
+  const signo = tendencia_hora > 0 ? '+' : '';
+
+  const valoresY = [];
+  serie_grafica.forEach((p) => {
+    if (p.real != null) valoresY.push(p.real);
+    if (p.prediccion != null) valoresY.push(p.prediccion);
+    if (p.banda_min != null) valoresY.push(p.banda_min);
+    if (p.banda_max != null) valoresY.push(p.banda_max);
+  });
+  const minY = valoresY.length ? Math.min(...valoresY) : 0;
+  const maxY = valoresY.length ? Math.max(...valoresY) : 100;
+  const span = Math.max(maxY - minY, conf.clave === 'luminosity' ? 50 : 2);
+  const domMin = Math.max(0, Number((minY - span * 0.18).toFixed(conf.decimales)));
+  const domMax = Number((maxY + span * 0.18).toFixed(conf.decimales));
+
+  const evaluado = r2 != null && muestras_ventana >= 6;
+
+  return (
+    <article className="panel p-6 flex flex-col justify-between">
+      <div>
+        {/* Cabecera estilo tarjeta de pronóstico */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <Icono size={19} style={{ color: conf.colorPred }} />
+            <h3 className="text-lg font-bold tracking-tight text-tinta">{conf.titulo}</h3>
+          </div>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              evaluado
+                ? 'bg-savia/15 text-savia ring-1 ring-savia/30'
+                : 'bg-white/8 text-niebla'
+            }`}
+          >
+            {evaluado ? `Evaluado · R² ${fmtVal(r2, 2)}` : 'Sin evaluar'}
+          </span>
+        </div>
+
+        {/* Subtítulo con proyecciones a 1h, 3h y 6h ± incertidumbre */}
+        <p className="mt-2 text-xs leading-relaxed text-niebla">
+          en 1 h:{' '}
+          <strong className="font-mono text-tinta">
+            {fmtVal(h1.valor, conf.decimales)} ± {fmtVal(h1.error, conf.decimales)} {conf.unidad}
+          </strong>
+          ; en 3 h:{' '}
+          <strong className="font-mono text-tinta">
+            {fmtVal(h3.valor, conf.decimales)} ± {fmtVal(h3.error, conf.decimales)} {conf.unidad}
+          </strong>
+          ; en 6 h:{' '}
+          <strong className="font-mono text-tinta">
+            {fmtVal(h6.valor, conf.decimales)} ± {fmtVal(h6.error, conf.decimales)} {conf.unidad}
+          </strong>{' '}
+          <span className="text-niebla/80">
+            (tendencia {signo}{fmtVal(tendencia_hora, conf.decimales === 0 ? 1 : 2)} {conf.unidad}/h, últimas {horas_ventana} h)
+          </span>
+        </p>
+
+        {/* Leyenda compacta Entrenamiento / Prueba / Predicciones */}
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-niebla">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-4 rounded-full bg-sky-400" />
+            Entrenamiento ({n_train})
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-4 rounded-full bg-orange-400" />
+            Prueba ({n_test})
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-4 rounded-full bg-emerald-400" />
+            Predicciones (+6 h)
+          </span>
+        </div>
+      </div>
+
+      {/* Gráfica de serie temporal + predicción recursiva */}
+      <div className="my-4 h-52 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={serie_grafica} margin={{ top: 14, right: 14, left: -14, bottom: 0 }}>
+            <defs>
+              <linearGradient id={`banda-${conf.clave}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#34d399" stopOpacity={0.22} />
+                <stop offset="100%" stopColor="#34d399" stopOpacity={0.03} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="rgb(255 255 255 / .06)" vertical={false} />
+            <XAxis
+              dataKey="ts"
+              type="number"
+              scale="time"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={(v) => new Date(v).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+              stroke="#9fb5aa"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              minTickGap={36}
+            />
+            <YAxis
+              domain={[domMin, domMax]}
+              stroke="#9fb5aa"
+              fontSize={11}
+              tickLine={false}
+              axisLine={false}
+              width={46}
+              tickFormatter={(v) => fmtVal(v, conf.decimales === 0 ? 0 : 1)}
+            />
+            <Tooltip
+              content={<TooltipPrediccion unidad={conf.unidad} decimales={conf.decimales} />}
+              cursor={{ stroke: 'rgb(255 255 255 / .18)' }}
+            />
+            {ultima_lectura_ts && (
+              <ReferenceLine
+                x={ultima_lectura_ts}
+                stroke="#9fb5aa"
+                strokeDasharray="3 3"
+                strokeOpacity={0.6}
+                label={{
+                  value: 'última lectura',
+                  position: 'insideTopRight',
+                  fill: '#9fb5aa',
+                  fontSize: 10,
+                }}
+              />
+            )}
+            <Area
+              type="monotone"
+              dataKey="banda_max"
+              stroke="none"
+              fill={`url(#banda-${conf.clave})`}
+              connectNulls
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="entrenamiento"
+              name="Entrenamiento"
+              stroke="#38bdf8"
+              strokeWidth={2.2}
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="prueba"
+              name="Prueba"
+              stroke="#fb923c"
+              strokeWidth={2.2}
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="prediccion"
+              name="Predicciones"
+              stroke="#34d399"
+              strokeWidth={2.4}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                if (payload?.ts === ultima_lectura_ts && cx && cy) {
+                  return (
+                    <circle
+                      key={`dot-${payload.ts}`}
+                      cx={cx}
+                      cy={cy}
+                      r={4.5}
+                      fill="#34d399"
+                      stroke="#050d0a"
+                      strokeWidth={1.5}
+                    />
+                  );
+                }
+                return null;
+              }}
+              connectNulls
+              isAnimationActive={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Pie de tarjeta con métricas de la ventana */}
+      <p className="border-t border-white/8 pt-3 text-xs text-niebla">
+        <span className="font-mono text-tinta">{muestras_ventana}</span> lecturas reales en la ventana ·{' '}
+        R² <span className="font-mono text-tinta">{fmtVal(r2, 2)}</span> ·{' '}
+        RMSE <span className="font-mono text-tinta">{fmtVal(rmse, conf.decimales)} {conf.unidad}</span> ·{' '}
+        tendencia <span className="font-mono text-tinta">{signo}{fmtVal(tendencia_hora, conf.decimales === 0 ? 1 : 2)} {conf.unidad}/h</span>
+      </p>
+    </article>
+  );
+}
+
+export default function VistaPrediccion({ plantaId, tick }) {
   const [modeloVivo, setModeloVivo] = useState(null);
   const [prediccionesDb, setPrediccionesDb] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(false);
-  const [enviandoTg, setEnviandoTg] = useState(false);
-  const [tgExito, setTgExito] = useState(null);
 
   const cargarDatos = () => {
     if (!plantaId) return;
     setCargando(true);
-    setError(false);
 
     Promise.all([
       getPrediccion(plantaId, 24).catch(() => null),
@@ -28,56 +330,12 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
         setModeloVivo(vivo);
         setPrediccionesDb(desdeDb || []);
       })
-      .catch(() => setError(true))
       .finally(() => setCargando(false));
   };
 
   useEffect(() => {
     cargarDatos();
   }, [plantaId, tick]);
-
-  const enviarAlertaTelegram = async () => {
-    if (!modeloVivo && prediccionesDb.length === 0) return;
-    setEnviandoTg(true);
-    setTgExito(null);
-
-    const hActual = modeloVivo?.humedad_actual ?? (prediccionesDb[0]?.soil_moisture_pred ?? 'N/D');
-    const hRiego = modeloVivo?.horas_hasta_riego;
-    const rec = modeloVivo?.recomendacion_agronomica ?? 'Revisar estado hídrico de la planta.';
-
-    let texto = `*🌱 AgroSense · Alerta Predictiva Hídrica*\n` +
-      `Planta: *${plantaId}*\n` +
-      `💧 Humedad de suelo actual: *${hActual}%*\n`;
-
-    if (hRiego !== null && hRiego !== undefined) {
-      if (hRiego === 0) {
-        texto += `🚨 *¡AGUA AGOTADA! El suelo está por debajo del umbral de estrés (30%). Riego urgente requerido.*\n`;
-      } else {
-        texto += `⚠️ *¡Atención! El agua se agotará en aprox. ${hRiego} horas.*\n`;
-      }
-    }
-
-    if (modeloVivo?.tasa_cambio_por_dia) {
-      texto += `📉 Tasa de variación: *${modeloVivo.tasa_cambio_por_dia}%/día*\n`;
-    }
-
-    texto += `📋 Recomendación: ${rec}\n` +
-      `_Datos calculados desde PostgreSQL DWH._`;
-
-    try {
-      const res = await enviarTelegramDirecto(texto);
-      if (res?.enviado) {
-        setTgExito('¡Alerta enviada a Telegram con éxito! ✈️');
-      } else {
-        setTgExito(res?.motivo || 'Error al enviar a Telegram');
-      }
-    } catch {
-      setTgExito('Error al conectar con la API de notificaciones');
-    } finally {
-      setEnviandoTg(false);
-      setTimeout(() => setTgExito(null), 6000);
-    }
-  };
 
   const tablaDias = prediccionesDb.length > 0
     ? prediccionesDb
@@ -86,6 +344,8 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
   const esCritico = modeloVivo?.horas_hasta_riego !== null &&
     modeloVivo?.horas_hasta_riego !== undefined &&
     modeloVivo.horas_hasta_riego <= 6;
+
+  const modelosVars = modeloVivo?.modelos_variables || {};
 
   return (
     <div className="space-y-6">
@@ -98,10 +358,10 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
             </span>
             <div>
               <h2 className="text-xl font-bold tracking-tight text-tinta">
-                Modelo Predictivo & Pronóstico Hídrico
+                Modelo Predictivo & Pronóstico Multivariable
               </h2>
               <p className="text-xs text-niebla">
-                Datos calculados y persistidos en PostgreSQL (<code className="font-mono text-[11px] text-cielo">prediccion_diaria</code>) · Cero datos inventados
+                Interpolación 1D, validación Train/Test y pronóstico recursivo sobre lecturas reales del DWH (<code className="font-mono text-[11px] text-cielo">lectura_limpia</code>)
               </p>
             </div>
           </div>
@@ -152,9 +412,8 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
         </div>
       )}
 
-      {/* Tarjetas resumen del modelo */}
+      {/* Tarjetas resumen del modelo hídrico */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Humedad actual */}
         <div className="panel p-5">
           <div className="flex items-center justify-between text-niebla">
             <span className="text-xs uppercase tracking-wider">Humedad Suelo Actual</span>
@@ -164,11 +423,10 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
             {modeloVivo?.humedad_actual ?? '--'}%
           </p>
           <span className="mt-1 block text-[11px] text-niebla">
-            Umbral mínimo de riego: 30.0%
+            Umbral crítico: 30.0% · Ideal: 40–70%
           </span>
         </div>
 
-        {/* Tasa y tendencia */}
         <div className="panel p-5">
           <div className="flex items-center justify-between text-niebla">
             <span className="text-xs uppercase tracking-wider">Dinámica de Secado</span>
@@ -192,7 +450,6 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
           </span>
         </div>
 
-        {/* Tiempo hasta riego */}
         <div className="panel p-5">
           <div className="flex items-center justify-between text-niebla">
             <span className="text-xs uppercase tracking-wider">Tiempo hasta Riego</span>
@@ -207,15 +464,14 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
           </p>
           <span className="mt-1 block text-[11px] text-niebla">
             {modeloVivo?.fecha_estimada_riego
-              ? `Hora est.: ${new Date(modeloVivo.fecha_estimada_riego).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              ? `Est.: ${new Date(modeloVivo.fecha_estimada_riego).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`
               : 'Reserva hídrica suficiente'}
           </span>
         </div>
 
-        {/* Calidad del modelo en PostgreSQL */}
         <div className="panel p-5">
           <div className="flex items-center justify-between text-niebla">
-            <span className="text-xs uppercase tracking-wider">Calibración en Postgres</span>
+            <span className="text-xs uppercase tracking-wider">Calibración OLS / Recursiva</span>
             <Database size={16} className="text-brote" />
           </div>
           <p className="mt-2 font-mono text-3xl font-bold text-tinta">
@@ -223,24 +479,24 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
           </p>
           <span className="mt-1 block text-[11px] text-niebla">
             {modeloVivo?.muestras_reales
-              ? `${modeloVivo.muestras_reales} lecturas reales analizadas`
+              ? `${modeloVivo.muestras_reales} lecturas post-riego · RMSE ${modeloVivo?.metricas_modelo?.rmse ?? '--'}%`
               : 'Tabla prediccion_diaria'}
           </span>
         </div>
       </div>
 
-      {/* Mensaje de espera si no hay suficientes datos reales */}
-      {modeloVivo && !modeloVivo.disponible && (
-        <div className="panel p-6">
-          <div className="flex items-center gap-3 text-niebla">
-            <Clock size={20} className="text-cielo" />
-            <div>
-              <h3 className="text-sm font-semibold text-tinta">Esperando Muestras Reales</h3>
-              <p className="mt-0.5 text-xs text-niebla leading-relaxed">{modeloVivo.motivo}</p>
-            </div>
-          </div>
+      {/* Gráficas de Predicción Multivariable (Humedad del Suelo, Temperatura, Luminosidad, Humedad del Aire) */}
+      <section className="space-y-4" aria-label="Gráficas de predicción por variable">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          {CONFIG_VARIABLES.map((conf) => (
+            <TarjetaGraficaPrediccion
+              key={conf.clave}
+              conf={conf}
+              modeloVar={modelosVars[conf.clave]}
+            />
+          ))}
         </div>
-      )}
+      </section>
 
       {/* Tabla de Predicciones Multi-Día desde PostgreSQL */}
       <section className="panel overflow-hidden" aria-labelledby="titulo-tabla-prediccion">
@@ -249,10 +505,10 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
             <div>
               <h3 id="titulo-tabla-prediccion" className="text-base font-semibold text-tinta flex items-center gap-2">
                 <Calendar size={18} className="text-cielo" />
-                Predicciones de Siguientes Días (Tabla PostgreSQL: prediccion_diaria)
+                Pronóstico Hídrico de Siguientes Días (Tabla PostgreSQL: prediccion_diaria)
               </h3>
               <p className="text-xs text-niebla">
-                Proyecciones calculadas automáticamente por el ETL y persistidas en la base de datos
+                Curva de agotamiento FAO-56 calculada por el ETL y persistida en la base de datos
               </p>
             </div>
             <span className="rounded-full bg-white/5 px-3 py-1 font-mono text-xs text-niebla ring-1 ring-white/10">
@@ -269,8 +525,6 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
           <div className="py-12 text-center text-xs text-niebla">
             <AlertCircle size={24} className="mx-auto mb-2 text-niebla/60" />
             No hay predicciones guardadas todavía en la base de datos.
-            <br />
-            El ETL calculará y guardará las proyecciones automáticamente en cuanto existan lecturas del sensor.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -371,30 +625,6 @@ export default function VistaPrediccion({ plantaId, tick, onVista }) {
             </table>
           </div>
         )}
-      </section>
-
-      {/* Explicación de la arquitectura de Eventos y Suscripciones */}
-      <section className="panel p-6 border-white/10 bg-white/[.01]">
-        <div className="flex items-center gap-2 mb-3">
-          <ShieldCheck size={18} className="text-brote" />
-          <h4 className="text-sm font-semibold text-tinta">
-            Verificación de Arquitectura Basada en Eventos y Suscripciones
-          </h4>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 text-xs text-niebla">
-          <div className="rounded-xl border border-white/6 bg-white/[.02] p-3.5">
-            <span className="font-semibold text-tinta block mb-1">1. Ingesta Cifrada & Context Broker</span>
-            El microcontrolador ESP32 transmite datos firmados con HMAC-SHA256 (y opcional TLS) a través del IoT Agent hacia Orion Context Broker.
-          </div>
-          <div className="rounded-xl border border-white/6 bg-white/[.02] p-3.5">
-            <span className="font-semibold text-tinta block mb-1">2. Suscripción Orion &rarr; QuantumLeap</span>
-            Suscripción NGSIv2 activa en Orion que notifica por eventos a QuantumLeap para persistir series temporales en CrateDB.
-          </div>
-          <div className="rounded-xl border border-white/6 bg-white/[.02] p-3.5">
-            <span className="font-semibold text-tinta block mb-1">3. Crontab ETL & WebSockets</span>
-            El ETL es ejecutado periódicamente por crontab en el contenedor. Si detecta anomalías o déficit hídrico, emite eventos en tiempo real al WebSocket y genera alertas directas a Telegram.
-          </div>
-        </div>
       </section>
     </div>
   );
