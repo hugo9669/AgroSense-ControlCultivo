@@ -72,7 +72,7 @@ def formatear_mensaje_alerta(tipo: str, titulo: str, mensaje: str, datos: dict[s
         elif tasa_hora is not None:
             lineas.append(f"📉 *Velocidad de secado:* *{tasa_hora}%/h*")
         lineas.append(f"📋 *Diagnóstico:* {_limpiar_md(mensaje)}")
-        lineas.append("🌐 Panel en vivo: http://32.193.138.160")
+        lineas.append("🌐 Panel en vivo: https://32.193.138.160")
         return "\n".join(lineas)
 
     # Alerta técnica o física del ETL
@@ -84,7 +84,7 @@ def formatear_mensaje_alerta(tipo: str, titulo: str, mensaje: str, datos: dict[s
         f"🌿 *Planta:* `{planta}`\n"
         f"{severidad_emoji}: *{etiqueta}*\n"
         f"📝 *Detalle:* {_limpiar_md(mensaje)}\n"
-        f"🌐 Panel en vivo: http://32.193.138.160"
+        f"🌐 Panel en vivo: https://32.193.138.160"
     )
 
 

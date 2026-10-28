@@ -163,7 +163,8 @@ services:
     depends_on: [api, iot-agent]
     logging: *logging
     ports:
-      - "80:80"                     # panel web + /api (API) + /iot/json (entrada del ESP32)
+      - "80:80"                     # panel web HTTP + /iot/json (entrada del ESP32)
+      - "443:443"                   # panel web seguro HTTPS (TLS 1.2 / 1.3)
 
   grafana:                           # opcional (admin / tecnico)
     image: grafana/grafana:11.3.0
