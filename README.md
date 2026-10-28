@@ -8,68 +8,6 @@ El sistema integra un dispositivo en el extremo (**LilyGO TTGO T-Beam ESP32**) c
 
 ## 1. Arquitectura General del Sistema
 
-El flujo completo de datos sigue una arquitectura de capas desacopladas que garantiza resiliencia, trazabilidad de fallas de hardware y alta disponibilidad.
-
-```mermaid
-flowchart TD
-    subgraph EDGE["Capa de Percepción / Edge Computing (Planta)"]
-        HDC["Sensor HDC1080<br/>Temp. & Hum. Aire (I2C: 0x40)"]
-        AP["Sensor AP3216<br/>Luminosidad (I2C: 0x1E)"]
-        SOIL["Sonda Higrómetro LM393<br/>Humedad Suelo (GPIO39 / ADC1)"]
-        ESP["LilyGO TTGO T-Beam (ESP32)<br/>• Oversampling ADC (10 muestras)<br/>• Poda de ruido (Centinela -999)<br/>• Bundling Multisensor JSON<br/>• Latido periódico (30s)"]
-        HDC --> ESP
-        AP --> ESP
-        SOIL --> ESP
-    end
-
-    subgraph INGRESS["Capa de Entrada y Seguridad (AWS EC2 :80)"]
-        NGINX["Nginx Reverse Proxy (:80)<br/>• /iot/json ➔ IoT Agent<br/>• /api/* ➔ FastAPI<br/>• /* ➔ SPA React"]
-    end
-
-    subgraph FIWARE["Capa FIWARE (Gestión de Contexto)"]
-        IOTA["FIWARE IoT Agent JSON (:7896)<br/>Mapea telemetría a NGSIv2"]
-        ORION["FIWARE Orion Context Broker (:1036)<br/>Entidad: planta01 (PlantSensor)"]
-        MONGO[("MongoDB (:27017)<br/>Persistencia del Contexto Actual")]
-        QL["QuantumLeap (:8668)<br/>Suscripción a cambios de Orion"]
-        IOTA --> ORION
-        ORION <--> MONGO
-        ORION -->|Notificación NGSIv2| QL
-    end
-
-    subgraph RAW_STORE["Capa de Histórico Crudo (Cold Storage)"]
-        CRATE[("CrateDB (:4200)<br/>Serie temporal cruda e inmutable<br/>mtopeniot.etplantsensor")]
-        QL --> CRATE
-    end
-
-    subgraph ANALYTICS["Capa Analítica & ETL (Tratamiento de Datos)"]
-        ETL["ETL Autónomo en Python<br/>1. Extracción incremental<br/>2. Limpieza de rangos físicos<br/>3. Detección de atípicos (Mediana + MAD)<br/>4. Imputación controlada (Interpolación ≤ 2 min)<br/>5. Detección de caída de enlace (Watchdog > 15 min)<br/>6. Rollups horarios y diarios<br/>7. Deduplicación de alertas"]
-        CRATE -->|time_index > last_ts| ETL
-    end
-
-    subgraph DWH["Capa de Almacenamiento Estructurado (DWH)"]
-        PG[("PostgreSQL DWH (:5432)<br/>• lectura_limpia (con es_imputado)<br/>• resumen_horario<br/>• resumen_diario<br/>• alerta")]
-        ETL --> PG
-    end
-
-    subgraph PRESENTATION["Capa de Aplicación, IA y Visualización"]
-        API["FastAPI Backend (:8000)<br/>• Auth HMAC con tokens de 8h<br/>• Métricas, resúmenes y alertas<br/>• Chat IA (Google Gemini 3.8 Flash)"]
-        WEB["Panel Web AgroSense (React 19 + Tailwind)<br/>• Vistas: Resumen, Historial, Alertas, Chat IA"]
-        GRAF["Grafana (:3000)<br/>• Tablero Estadístico del Cultivo<br/>• Tablero Técnico de Telemetría"]
-        PG --> API
-        PG --> GRAF
-        CRATE --> GRAF
-        API --> NGINX
-        WEB --> NGINX
-    end
-
-    ESP -->|"HTTP POST JSON (:80/iot/json?k=...&i=...)"| NGINX
-    NGINX --> IOTA
-    ETL -->|"Lazo de Retorno: Alerta activa (PlantAlert)"| ORION
-    NGINX -->|HTTP :80| CLIENTE["Usuario / Navegador Web"]
-    GRAF -->|HTTP :3000| CLIENTE
-```
-
----
 
 ## 2. Diagrama de Secuencia del Flujo de Datos
 
