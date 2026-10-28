@@ -73,11 +73,10 @@ export default function VistaResumen({ planta, lecturas, alertas, resumenAlertas
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Kpi icono={CheckCircle2} tono="savia" titulo="Variables en rango" valor={planta ? `${variablesOk}/4` : '--'} detalle="Según umbrales del cultivo" />
         <Kpi icono={AlertOctagon} tono="coral" titulo="Errores 24 h" valor={err24} detalle={`${resumenAlertas?.error?.d7 ?? 0} en 7 días`} />
         <Kpi icono={AlertTriangle} tono="ambar" titulo="Advertencias 24 h" valor={warn24} detalle={`${resumenAlertas?.warning?.d7 ?? 0} en 7 días`} />
-        <Kpi icono={Database} tono="cielo" titulo="Lecturas recientes" valor={lecturas.length} detalle="Cargadas por el ETL" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">

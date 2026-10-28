@@ -1,18 +1,7 @@
-import { Leaf, LogOut, Server, Database, Sparkles } from 'lucide-react';
+import { Leaf, LogOut } from 'lucide-react';
 import { VISTAS } from '../lib/vistas';
 
-function Indicador({ ok, icono: Icono, texto }) {
-  const tono = ok == null ? 'text-niebla' : ok ? 'text-savia' : 'text-coral';
-  return (
-    <li className="flex items-center gap-2 text-xs">
-      <Icono size={14} className={tono} aria-hidden="true" />
-      <span className="text-niebla">{texto}</span>
-      <span className={`ml-auto font-semibold ${tono}`}>{ok == null ? '…' : ok ? 'OK' : 'Falla'}</span>
-    </li>
-  );
-}
-
-export default function Sidebar({ vista, onVista, alertasNuevas, estado, usuario, onLogout }) {
+export default function Sidebar({ vista, onVista, alertasNuevas, usuario, onLogout }) {
   return (
     <>
       {/* Escritorio */}
@@ -50,15 +39,6 @@ export default function Sidebar({ vista, onVista, alertasNuevas, estado, usuario
             })}
           </ul>
         </nav>
-
-        <div className="m-3 rounded-2xl border border-white/8 bg-white/[.02] p-4">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[.16em] text-niebla">Servicios</p>
-          <ul className="space-y-2">
-            <Indicador ok={estado?.api} icono={Server} texto="API" />
-            <Indicador ok={estado?.db} icono={Database} texto="DWH Postgres" />
-            <Indicador ok={estado == null ? null : estado.ia} icono={Sparkles} texto="IA Gemini" />
-          </ul>
-        </div>
 
         <div className="flex items-center gap-3 border-t border-white/8 px-5 py-4">
           <span className="grid h-9 w-9 place-items-center rounded-full bg-white/8 text-sm font-bold uppercase">
